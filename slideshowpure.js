@@ -354,7 +354,8 @@ const slidesInit = () => {
       return text
         .split("\n")
         .map((id) => id.trim())
-        .filter((id) => id);
+        .filter((id) => id)
+        .slice(1);
     } catch (error) {
       console.error("Error fetching list.txt:", error);
       return [];

@@ -935,7 +935,7 @@ const SlideCreator = {
     return SlideUtils.createElement('button', {
       className: 'play-button',
       innerHTML: `
-      <span class="play-icon"><i class="material-icons">play_circle_fill</i></span>
+      <span class="play-icon"><i class="material-icons">play_circle</i></span>
       <span class="play-text">Play</span>
     `,
       onclick: (e) => {

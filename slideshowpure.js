@@ -493,7 +493,7 @@ const ApiUtils = {
       console.log("Fetching random items from server...");
 
       const response = await fetch(
-        `${STATE.jellyfinData.serverAddress}/Items?IncludeItemTypes=Movie,Series&Recursive=true&hasOverview=true&imageTypes=Logo,Backdrop&sortBy=Random&isPlayed=False&Limit=${CONFIG.maxItems}&Fields=Id`,
+        `${STATE.jellyfinData.serverAddress}/Items?userId=${STATE.jellyfinData.userId}&IncludeItemTypes=Movie,Series&Recursive=true&hasOverview=true&imageTypes=Logo,Backdrop&sortBy=Random&isPlayed=False&Limit=${CONFIG.maxItems}&Fields=Id`,
         {
           headers: this.getAuthHeaders()
         }

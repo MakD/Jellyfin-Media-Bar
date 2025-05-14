@@ -189,19 +189,30 @@
 
 .dot {
   display: inline-block;
-  width: 0.5em;
-  height: 0.5em;
+  cursor: pointer;
+  height: 8px;
+  width: 8px;
   margin: 0 5px;
-  background-color: #cecece99;
+  background-color: #CCCCCC;
   border-radius: 50%;
   transform-origin: center;
-  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1),
-    background-color 0.5s ease-in-out;
+  transition: transform 0.03s ease-in-out,
+              background-color 0.03s ease-in-out;
+}
+
+.dot:hover {
+  transform: scale(1.3);
+  background-color: #E0E0E0;
 }
 
 .dot.active {
-  background-color: #fff;
+  background-color: #F0E0F0;
   transform: scale(1.7);
+}
+
+.dot.active:hover {
+  transform: scale(1.7);
+  background-color: #FFFFFF;
 }
 
 .slide {

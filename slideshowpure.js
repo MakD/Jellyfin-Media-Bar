@@ -24,6 +24,8 @@ const CONFIG = {
   maxItems: 500,
   preloadCount: 3,
   fadeTransitionDuration: 500,
+  slideshowItems: 8,        // how many slideshow items to display on the homepage (note: the number of items in list.txt should ideally match this, but if not, it will randomly select the remainder of items from your libraries)
+  enableRandom: true,       // fill missing slots with random items
 };
 
 // State management
@@ -1146,52 +1148,71 @@ const SlideCreator = {
  */
 const SlideshowManager = {
 
-  createPaginationDots() {
-    let dotsContainer = document.querySelector(".dots-container");
-    if (!dotsContainer) {
-      dotsContainer = document.createElement("div");
-      dotsContainer.className = "dots-container";
-      document.getElementById("slides-container").appendChild(dotsContainer);
-    }
+    createPaginationDots() {
+        let dotsContainer = document.querySelector(".dots-container");
+        if (!dotsContainer) {
+            dotsContainer = document.createElement("div");
+            dotsContainer.className = "dots-container";
+            document.getElementById("slides-container").appendChild(dotsContainer);
+        } else {
+            dotsContainer.innerHTML = '';
+        }
 
-    for (let i = 0; i < 5; i++) {
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      dot.setAttribute("data-index", i);
-      dotsContainer.appendChild(dot);
-    }
-    this.updateDots();
-  },
+        const numDots = CONFIG.slideshowItems;
+        console.log(`Creating ${numDots} pagination dots.`)
+        for (let i = 0; i < numDots; i++) {
+            const dot = document.createElement("span");
+            dot.className = "dot";
+            dot.setAttribute("data-index", i);
+
+            dot.addEventListener('click', (event) => {
+                const slideIndex = parseInt(event.target.getAttribute('data-index'), 10);
+                this.updateCurrentSlide(slideIndex);
+
+                if (STATE.slideshow.isPaused) {
+                     const pauseButton = document.getElementById("slideshow-pause-button");
+                     if (pauseButton) {
+                         pauseButton.click();
+                     }
+                }
+            });
+
+            dotsContainer.appendChild(dot);
+        }
+        this.updateDots();
+    },
 
   /**
    * Updates active dot based on current slide
-   * Maps current slide to one of the 5 dots
+   * Maps current slide index to one of the configured number of dots
    */
-  updateDots() {
-    const container = SlideUtils.getOrCreateSlidesContainer();
-    const dots = container.querySelectorAll(".dot");
-    const currentIndex = STATE.slideshow.currentSlideIndex;
-    const totalItems = STATE.slideshow.totalItems;
-    const numDots = dots.length;
+    updateDots() {
+        const container = SlideUtils.getOrCreateSlidesContainer();
+        const dots = container.querySelectorAll(".dot");
+        if (!dots || dots.length === 0) return; // Don't run if no dots exist
 
-    let activeDotIndex;
+        const currentIndex = STATE.slideshow.currentSlideIndex;
+        const totalItems = STATE.slideshow.totalItems; // Actual items being shown
+        const numDots = dots.length; // Should match CONFIG.slideshowItems
 
-    if (totalItems <= numDots) {
-      activeDotIndex = currentIndex;
-    } else {
-      activeDotIndex = Math.floor(
-        (currentIndex % numDots) * (numDots / numDots)
-      );
-    }
+        // Handle case where totalItems might be less than numDots (if list.txt was short and enableRandom=false)
+        const actualTotalItemsInRotation = totalItems;
 
-    dots.forEach((dot, index) => {
-      if (index === activeDotIndex) {
-        dot.classList.add("active");
-      } else {
-        dot.classList.remove("active");
-      }
-    });
-  },
+        if (actualTotalItemsInRotation === 0) return; // No items, no active dot
+
+        // Determine active dot index using modulo
+        const activeDotIndex = currentIndex % numDots;
+
+        dots.forEach((dot, index) => {
+            if (index === activeDotIndex) {
+                dot.classList.add("active");
+            } else {
+                dot.classList.remove("active");
+            }
+            // Optionally hide dots if there are fewer items than dots configured
+            dot.style.display = (index < actualTotalItemsInRotation) ? 'inline-block' : 'none';
+        });
+    },
 
   /**
    * Updates current slide to the specified index
@@ -1457,34 +1478,78 @@ const SlideshowManager = {
   /**
    * Loads slideshow data and initializes the slideshow
    */
-  async loadSlideshowData() {
-    try {
-      STATE.slideshow.isLoading = true;
+    async loadSlideshowData() {
+        try {
+            STATE.slideshow.isLoading = true;
+            const neededCount = CONFIG.slideshowItems;
+            let finalItemIds = [];
 
-      let itemIds = await ApiUtils.fetchItemIdsFromList();
+            console.log(`Attempting to fetch IDs from list.txt. Target slideshow items: ${neededCount}`);
+            let listIds = await ApiUtils.fetchItemIdsFromList();
 
-      if (itemIds.length === 0) {
-        itemIds = await ApiUtils.fetchItemIdsFromServer();
-      }
+            if (listIds && listIds.length > 0) {
+                console.log(`Fetched ${listIds.length} IDs from list.txt.`);
+                finalItemIds = [...listIds];
+            } else {
+                console.log("list.txt empty or not found.");
+                finalItemIds = [];
+            }
 
-      itemIds = SlideUtils.shuffleArray(itemIds);
+            const missingCount = neededCount - finalItemIds.length;
+            console.log(`Items needed from list: ${neededCount}. Items found in list: ${finalItemIds.length}. Missing: ${missingCount}`);
 
-      STATE.slideshow.itemIds = itemIds;
-      STATE.slideshow.totalItems = itemIds.length;
+            if (missingCount > 0 && CONFIG.enableRandom) {
+                console.log(`enableRandom is TRUE and ${missingCount} items are missing. Fetching random items from server...`);
+                const fetchLimit = Math.max(missingCount * 2, 20);
+                console.log(`Fetching up to ${fetchLimit} random items for potential fallback.`);
+                let serverIds = await ApiUtils.fetchItemIdsFromServer(fetchLimit);
 
-      this.createPaginationDots();
+                if (serverIds && serverIds.length > 0) {
+                    console.log(`Fetched ${serverIds.length} random IDs from server.`);
+                    const listIdSet = new Set(finalItemIds);
+                    const uniqueServerIds = serverIds.filter(id => !listIdSet.has(id));
+                    console.log(`Found ${uniqueServerIds.length} unique random IDs not already in list.txt.`);
 
-      await this.updateCurrentSlide(0);
+                    const shuffledServerIds = SlideUtils.shuffleArray(uniqueServerIds);
 
-      STATE.slideshow.slideInterval = new SlideTimer(() => {
-        this.nextSlide();
-      }, CONFIG.shuffleInterval);
-    } catch (error) {
-      console.error("Error loading slideshow data:", error);
-    } finally {
-      STATE.slideshow.isLoading = false;
-    }
-  },
+                    const neededServerIds = shuffledServerIds.slice(0, missingCount);
+                    console.log(`Adding ${neededServerIds.length} random IDs to fill the slots.`);
+
+                    finalItemIds = finalItemIds.concat(neededServerIds);
+                } else {
+                    console.log("No random items fetched from server or server fetch failed.");
+                }
+            } else if (missingCount > 0 && !CONFIG.enableRandom) {
+                console.log(`enableRandom is FALSE and ${missingCount} items are missing. Slideshow will have fewer than ${neededCount} items.`);
+            }
+
+            console.log(`Shuffling the final list of ${finalItemIds.length} potential items.`);
+            finalItemIds = SlideUtils.shuffleArray(finalItemIds);
+
+            if (finalItemIds.length > neededCount) {
+                console.log(`Final list has ${finalItemIds.length} items, which is more than the configured ${neededCount}. Slicing.`);
+                finalItemIds = finalItemIds.slice(0, neededCount);
+            }
+
+            console.log(`Final itemIds count: ${finalItemIds.length}. Assigning to STATE.slideshow.itemIds.`);
+            STATE.slideshow.itemIds = finalItemIds;
+            STATE.slideshow.totalItems = finalItemIds.length; // Total items is now the final count
+            console.log(`STATE updated. Total items for slideshow: ${STATE.slideshow.totalItems}`);
+
+            // Create pagination dots based on the *actual* number of items being shown
+            this.createPaginationDots(); // This will now use the updated totalItems count via CONFIG
+
+            await this.updateCurrentSlide(0);
+            STATE.slideshow.slideInterval = new SlideTimer(() => {
+                this.nextSlide();
+            }, CONFIG.shuffleInterval);
+
+        } catch (error) {
+            console.error("Error loading slideshow data:", error);
+        } finally {
+            STATE.slideshow.isLoading = false;
+        }
+    },
 };
 
 /**

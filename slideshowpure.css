@@ -560,6 +560,36 @@
   display: none;
 }
 
+#slideshow-pause-button {
+  position: absolute;
+  top: calc(50% + 18vh);
+  right: calc(3% + 65px);
+  z-index: 6;
+  background-color: rgba(255,255,255,0.1);
+  color: white;
+  border: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#slideshow-pause-button:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+}
+
+#slideshow-pause-button .material-icons {
+  font-size: 28px;
+}
+
+.slide.active.slideshow-paused .backdrop.animate {
+  animation-play-state: paused;
+}
+
 /*Portrait-Modes Phone*/
 @media only screen and (max-width: 767px) and (orientation: portrait) {
   .plot-container {
@@ -673,6 +703,12 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+  }
+  
+  #slideshow-pause-button {
+    right: calc(3% + 50px);
+    transform: scale(0.8);
+    top: calc(50% + 18vh);
   }
 }
 

@@ -49,6 +49,7 @@ const STATE = {
     createdSlides: {},
     totalItems: 0,
     isLoading: false,
+    isPaused: false,
   },
 };
 
@@ -737,15 +738,15 @@ const VisibilityObserver = {
 
     container.style.display = isVisible ? "block" : "none";
 
-    if (isVisible) {
-      if (STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.start();
-      }
-    } else {
-      if (STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.stop();
-      }
-    }
+     if (isVisible) {
+       if (STATE.slideshow.slideInterval && !STATE.slideshow.isPaused) {
+         STATE.slideshow.slideInterval.start();
+       }
+     } else {
+       if (STATE.slideshow.slideInterval) {
+         STATE.slideshow.slideInterval.stop();
+       }
+     }
   },
 
   /**
@@ -1193,13 +1194,11 @@ const SlideshowManager = {
     });
   },
 
-  /**
-   * Updates current slide to the specified index
-   * @param {number} index - Slide index to display
-   */
-
   async updateCurrentSlide(index) {
     if (STATE.slideshow.isTransitioning) {
+      return;
+    }
+    if (STATE.slideshow.isPaused) {
       return;
     }
 
@@ -1215,32 +1214,54 @@ const SlideshowManager = {
       let currentSlide = document.querySelector(
         `.slide[data-item-id="${currentItemId}"]`
       );
+
+      // If slide doesn't exist in DOM, create it
       if (!currentSlide) {
         currentSlide = await SlideCreator.createSlideForItemId(currentItemId);
-        this.upgradeSlideImageQuality(currentSlide);
+
+        if (typeof this.upgradeSlideImageQuality === 'function') {
+            this.upgradeSlideImageQuality(currentSlide);
+        } else {
+        }
+
 
         if (!currentSlide) {
           console.error(`Failed to create slide for item ${currentItemId}`);
-          STATE.slideshow.isTransitioning = false;
-          setTimeout(() => this.nextSlide(), 500);
+          STATE.slideshow.isTransitioning = false; // Reset transitioning state before returning/retrying
+          setTimeout(() => {
+              // Assuming nextSlide is a method of SlideshowManager
+              if (typeof this.nextSlide === 'function') {
+                  this.nextSlide();
+              }
+          }, 500);
           return;
         }
       }
-
+      
+      // Remove active and paused classes from the *actual* previous slide
       const previousVisibleSlide = container.querySelector(".slide.active");
-
-      if (previousVisibleSlide) {
-        previousVisibleSlide.classList.remove("active");
+      if (previousVisibleSlide && previousVisibleSlide !== currentSlide) { // Ensure it's not the same slide
+          previousVisibleSlide.classList.remove("active", "slideshow-paused");
       }
-
+      
+      // Activate the new slide
       currentSlide.classList.add("active");
 
-      currentSlide.querySelector(".backdrop").classList.add("animate");
-      currentSlide.querySelector(".logo").classList.add("animate");
+      // If the slideshow is currently paused (e.g., paused during async slide creation),
+     // add the paused class to the new active slide.
+      if (STATE.slideshow.isPaused) {
+          currentSlide.classList.add('slideshow-paused');
+      }
+
+      // Trigger animations (these should respect animation-play-state paused if the class is set)
+      const backdrop = currentSlide.querySelector(".backdrop");
+      if (backdrop) backdrop.classList.add("animate");
+      const logo = currentSlide.querySelector(".logo");
+      if (logo) logo.classList.add("animate");
 
       STATE.slideshow.currentSlideIndex = index;
 
-      if (index === 0 || !previousVisibleSlide) {
+      if (index === 0 || !previousVisibleSlide || (previousVisibleSlide === currentSlide && index === 0) ) {
         const dotsContainer = container.querySelector(".dots-container");
         if (dotsContainer) {
           dotsContainer.style.opacity = "1";
@@ -1248,24 +1269,30 @@ const SlideshowManager = {
       }
 
       setTimeout(() => {
-        const allSlides = container.querySelectorAll(".slide");
-        allSlides.forEach((slide) => {
-          if (slide !== currentSlide) {
-            slide.classList.remove("active");
-          }
-        });
+          const allSlides = container.querySelectorAll(".slide");
+          allSlides.forEach((slide) => {
+              if (slide !== currentSlide) {
+                  slide.classList.remove("active", "slideshow-paused");
+              }
+          });
       }, CONFIG.fadeTransitionDuration);
 
-      this.preloadAdjacentSlides(index);
+      if (typeof this.preloadAdjacentSlides === 'function') {
+        this.preloadAdjacentSlides(index);
+      }
       this.updateDots();
 
-      if (STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.restart();
+      // Restart timer only if the slideshow is playing
+      if (STATE.slideshow.slideInterval && !STATE.slideshow.isPaused) {
+          STATE.slideshow.slideInterval.restart();
       }
 
-      this.pruneSlideCache();
+      if (typeof this.pruneSlideCache === 'function') {
+        this.pruneSlideCache();
+      }
     } catch (error) {
       console.error("Error updating current slide:", error);
+      STATE.slideshow.isTransitioning = false; // Ensure transitioning state is reset on error
     } finally {
       setTimeout(() => {
         STATE.slideshow.isTransitioning = false;
@@ -1324,6 +1351,10 @@ const SlideshowManager = {
     const nextIndex = (currentIndex + 1) % totalItems;
 
     this.updateCurrentSlide(nextIndex);
+    
+    if (STATE.slideshow.isPaused) {
+        document.getElementById("slideshow-pause-button").click();
+    }
   },
 
   prevSlide() {
@@ -1333,6 +1364,10 @@ const SlideshowManager = {
     const prevIndex = (currentIndex - 1 + totalItems) % totalItems;
 
     this.updateCurrentSlide(prevIndex);
+    
+    if (STATE.slideshow.isPaused) {
+        document.getElementById("slideshow-pause-button").click();
+    }
   },
 
   /**
@@ -1572,6 +1607,55 @@ const initArrowNavigation = () => {
 };
 
 /**
+ * Initializes the pause/play button
+ */
+const initPauseButton = () => {
+    const container = SlideUtils.getOrCreateSlidesContainer();
+
+    const pauseButton = SlideUtils.createElement("button", {
+        id: "slideshow-pause-button",
+        className: "slideshow-control-button",
+        title: "Pause Slideshow",
+        innerHTML: '<i class="material-icons">pause</i>',
+        tabIndex: "0",
+    });
+
+    pauseButton.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        STATE.slideshow.isPaused = !STATE.slideshow.isPaused;
+        console.log(`Slideshow ${STATE.slideshow.isPaused ? 'Paused' : 'Resumed'}`);
+
+        const currentActiveSlide = container.querySelector('.slide.active');
+
+        if (STATE.slideshow.isPaused) {
+            if (STATE.slideshow.slideInterval) {
+                STATE.slideshow.slideInterval.stop();
+            }
+            pauseButton.innerHTML = '<i class="material-icons">play_arrow</i>';
+            pauseButton.title = "Resume Slideshow";
+            if (currentActiveSlide) {
+                currentActiveSlide.classList.add('slideshow-paused');
+            }
+        } else {
+            if (STATE.slideshow.slideInterval) {
+                STATE.slideshow.slideInterval.restart();
+            }
+            pauseButton.innerHTML = '<i class="material-icons">pause</i>';
+            pauseButton.title = "Pause Slideshow";
+            if (currentActiveSlide) {
+                currentActiveSlide.classList.remove('slideshow-paused');
+            }
+        }
+    });
+
+    container.appendChild(pauseButton);
+
+};
+
+
+/**
  * Initialize the slideshow
  */
 const slidesInit = async () => {
@@ -1665,6 +1749,8 @@ const slidesInit = async () => {
     SlideshowManager.initKeyboardEvents();
 
     initArrowNavigation();
+    
+    initPauseButton();
 
     VisibilityObserver.init();
 

@@ -24,6 +24,8 @@ const CONFIG = {
   maxItems: 500,
   preloadCount: 3,
   fadeTransitionDuration: 500,
+  hideLogo: false,          // hides the logo from the slideshow view
+  showTitle: true,          // ← new: show a plain-text title
 };
 
 // State management
@@ -769,10 +771,11 @@ const SlideCreator = {
   /**
    * Creates a slide element for an item
    * @param {Object} item - Item data
+   * @param {string} name - Display name (item.Name)
    * @param {string} title - Title type (Movie/TV Show)
    * @returns {HTMLElement} Slide element
    */
-  createSlideElement(item, title) {
+  createSlideElement(item, name, title) {
     if (!item || !item.Id) {
       console.error("Invalid item data:", item);
       return null;
@@ -811,11 +814,29 @@ const SlideCreator = {
       alt: "logo",
       loading: "eager",
     });
+    
+        let logoContainer = null;
+        if (!CONFIG.hideLogo) {
+            const logo = SlideUtils.createElement("img", {
+                className: "logo high-quality",
+                src: `${serverAddress}/Items/${itemId}/Images/Logo?quality=75`,
+                alt: "Logo",
+                loading: "eager",
+            });
+            logoContainer = SlideUtils.createElement("div", {
+                className: "logo-container",
+            });
+            logoContainer.appendChild(logo);
+        }
 
-    const logoContainer = SlideUtils.createElement("div", {
-      className: "logo-container",
-    });
-    logoContainer.appendChild(logo);
+        let titleElement = null;
+        if (CONFIG.showTitle) {
+            titleElement = SlideUtils.createElement(
+                "h2",
+                { className: "slide-title" },
+                name
+            );
+        }
 
     const featuredContent = SlideUtils.createElement(
       "div",
@@ -864,9 +885,17 @@ const SlideCreator = {
     const detailButton = this.createDetailButton(itemId);
     const favoriteButton = this.createFavoriteButton(item);
     buttonContainer.append(detailButton, playButton, favoriteButton);
+    
+    if (logoContainer) {
+        slide.appendChild(logoContainer);
+    }
+    if (titleElement) {
+        slide.appendChild(titleElement);
+    }
 
     slide.append(
       logoContainer,
+      titleElement,
       backdropContainer,
       gradientOverlay,
       featuredContent,
@@ -1126,6 +1155,7 @@ const SlideCreator = {
 
       const slideElement = this.createSlideElement(
         item,
+        item.Name,
         item.Type === "Movie" ? "Movie" : "TV Show"
       );
 

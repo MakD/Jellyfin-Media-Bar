@@ -324,13 +324,31 @@
 }
 
 .logo {
-  max-height: 70%;
+  max-height: 60%;
   max-width: 100%;
   height: auto;
   width: auto;
   object-fit: contain;
   filter: brightness(1.5);
 }
+
+.slide-title {
+    position: absolute;
+    display: flex;
+    top: calc(50% - 5vh);
+    left: 4vw;
+    margin: 0;
+    padding: 0;
+    color: #fff;
+    font-size: 2.5rem;
+    font-weight: 700;
+    z-index: 5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 90%;
+}
+
 
 .plot-container {
   position: absolute;
@@ -673,6 +691,11 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
+  }
+  
+  /* don't show plaintext title on mobile due to space constraints */
+  .slide-title {
+      display: none;
   }
 }
 

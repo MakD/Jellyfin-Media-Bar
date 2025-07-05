@@ -49,12 +49,24 @@ const STATE = {
     createdSlides: {},
     totalItems: 0,
     isLoading: false,
+    unauthorizedDetected: false,
   },
 };
 
 // Request throttling system
 const requestQueue = [];
 let isProcessingQueue = false;
+
+
+function showDetailPage(itemId) {
+  if (window.Emby && window.Emby.Page) {
+    Emby.Page.show(
+      `/details?id=${itemId}&serverId=${STATE.jellyfinData.serverId}`
+    );
+  } else {
+    window.location.href = `#/details?id=${itemId}&serverId=${STATE.jellyfinData.serverId}`;
+  }
+}
 
 /**
  * Process the next request in the queue with throttling
@@ -103,6 +115,9 @@ const addThrottledRequest = (url, callback) => {
 
 const isUserLoggedIn = () => {
   try {
+     if (STATE.slideshow.unauthorizedDetected) {
+        window.ApiClient._serverInfo.AccessToken = null; // Clear access token if unauthorized detected
+     }
     return (
       window.ApiClient &&
       window.ApiClient._currentUser &&
@@ -258,6 +273,7 @@ const resetSlideshowState = () => {
   STATE.slideshow.createdSlides = {};
   STATE.slideshow.totalItems = 0;
   STATE.slideshow.isLoading = false;
+  STATE.slideshow.unauthorizedDetected = false;
 };
 
 /**
@@ -452,6 +468,8 @@ const SlideUtils = {
   },
 };
 
+// funky global
+let played = false;
 /**
  * API utilities for fetching data from Jellyfin server
  */
@@ -473,9 +491,15 @@ const ApiUtils = {
           headers: this.getAuthHeaders(),
         }
       );
-
+      
       if (!response.ok) {
         throw new Error(`Failed to fetch item details: ${response.statusText}`);
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        console.warn("Not logged in. Cannot fetch item details.");
+        STATE.slideshow.unauthorizedDetected = true;
+        return null;
       }
 
       const itemData = await response.json();
@@ -590,7 +614,7 @@ const ApiUtils = {
         return false;
       }
 
-      const playUrl = `${STATE.jellyfinData.serverAddress}/Sessions/${sessionId}/Playing?playCommand=PlayNow&itemIds=${itemId}`;
+      const playUrl = `${STATE.jellyfinData.serverAddress}/Sessions/${sessionId}/Playing?playCommand=PlayNext&itemIds=${itemId}`;
       const playResponse = await fetch(playUrl, {
         method: "POST",
         headers: this.getAuthHeaders(),
@@ -598,7 +622,7 @@ const ApiUtils = {
 
       if (!playResponse.ok) {
         throw new Error(
-          `Failed to send play command: ${playResponse.statusText}`
+          `Failed to send play command to ${playUrl}: ${playResponse.statusText}`
         );
       }
 
@@ -761,7 +785,6 @@ const VisibilityObserver = {
     this.updateVisibility();
   },
 };
-
 /**
  * Slideshow UI creation and management
  */
@@ -863,7 +886,7 @@ const SlideCreator = {
     const playButton = this.createPlayButton(itemId);
     const detailButton = this.createDetailButton(itemId);
     const favoriteButton = this.createFavoriteButton(item);
-    buttonContainer.append(detailButton, playButton, favoriteButton);
+    buttonContainer.append(detailButton,  playButton, favoriteButton);
 
     slide.append(
       logoContainer,
@@ -1036,7 +1059,13 @@ const SlideCreator = {
       onclick: (e) => {
         e.preventDefault();
         e.stopPropagation();
-        ApiUtils.playItem(itemId);
+        // annoying bug when clicking play twice donest work. we just check if play has happend once if so show the detail page instead.
+        if (played) {
+          showDetailPage(itemId);
+        } else{
+          ApiUtils.playItem(itemId);
+          played=true;
+        }
       },
     });
   },
@@ -1053,13 +1082,7 @@ const SlideCreator = {
       onclick: (e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (window.Emby && window.Emby.Page) {
-          Emby.Page.show(
-            `/details?id=${itemId}&serverId=${STATE.jellyfinData.serverId}`
-          );
-        } else {
-          window.location.href = `#/details?id=${itemId}&serverId=${STATE.jellyfinData.serverId}`;
-        }
+        showDetailPage(itemId);
       },
     });
   },

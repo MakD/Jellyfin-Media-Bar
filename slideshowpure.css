@@ -3,6 +3,12 @@
  */
 
 @import url(https://fonts.googleapis.com/css2?family=Archivo+Narrow:ital,wght@0,400..700;1,400..700&display=swap);
+body, html {
+  user-select: none; /* Standard */
+  -webkit-user-select: none; /* Safari */
+  -moz-user-select: none; /* Firefox */
+  -ms-user-select: none; /* IE/Edge */
+}
 
 .backdrop.animate {
   animation: frostedGlass 1.2s cubic-bezier(0.4, 0, 0.2, 1),
@@ -152,8 +158,8 @@
 
 .arrow {
   position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  top: 35%;
+  transform: translateY(-35%);
   font-size: 12px;
   cursor: pointer;
   color: #fff;

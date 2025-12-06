@@ -732,8 +732,8 @@ const VisibilityObserver = {
     if (!container) return;
 
     const isVisible =
-        (window.location.hash === "#/home.html" ||
-         window.location.hash === "#/home") &&
+      (window.location.hash === "#/home.html" ||
+        window.location.hash === "#/home") &&
       activeTab.getAttribute("data-index") === "0";
 
     container.style.display = isVisible ? "block" : "none";

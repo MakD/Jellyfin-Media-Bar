@@ -489,12 +489,9 @@ const LocalizationUtils = {
 
     if (window.ApiClient && STATE.jellyfinData?.accessToken) {
       try {
-        const userId = window.ApiClient.getCurrentUserId();
-        if (userId) {
-          const userData = await window.ApiClient.getUser(userId);
-          if (userData.Configuration?.AudioLanguagePreference) {
-            locale = userData.Configuration.AudioLanguagePreference.toLowerCase();
-          }
+        const userData = window.ApiClient.getCurrentUser();
+        if (userData.Configuration?.AudioLanguagePreference) {
+          locale = userData.Configuration.AudioLanguagePreference.toLowerCase();
         }
       } catch (error) {
         console.warn("Could not fetch user language preference:", error);

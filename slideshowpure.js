@@ -489,18 +489,9 @@ const LocalizationUtils = {
 
     if (window.ApiClient && STATE.jellyfinData?.accessToken) {
       try {
-        const userId = window.ApiClient.getCurrentUserId();
-        if (userId) {
-          const userUrl = window.ApiClient.getUrl(`Users/${userId}`);
-          const userResponse = await fetch(userUrl, {
-            headers: ApiUtils.getAuthHeaders(),
-          });
-          if (userResponse.ok) {
-            const userData = await userResponse.json();
-            if (userData.Configuration?.AudioLanguagePreference) {
-              locale = userData.Configuration.AudioLanguagePreference.toLowerCase();
-            }
-          }
+        const userData = window.ApiClient.getCurrentUser();
+        if (userData.Configuration?.AudioLanguagePreference) {
+          locale = userData.Configuration.AudioLanguagePreference.toLowerCase();
         }
       } catch (error) {
         console.warn("Could not fetch user language preference:", error);
@@ -537,6 +528,15 @@ const LocalizationUtils = {
     if (!locale) {
       const navLang = navigator.language || navigator.userLanguage;
       locale = navLang ? navLang.toLowerCase() : "en-us";
+    }
+
+    // Convert 3-letter country codes to 2-letter if necessary
+    if (locale.length === 3) {
+      const countriesData = await window.ApiClient.getCountries();
+      const countryData = Object.values(countriesData).find(countryData => countryData.ThreeLetterISORegionName === locale.toUpperCase());
+      if (countryData) {
+        locale = countryData.TwoLetterISORegionName.toLowerCase();
+      }
     }
 
     this.cachedLocale = locale;
@@ -599,7 +599,7 @@ const LocalizationUtils = {
         }
 
         const chunkText = await response.text();
-        
+
         let jsonMatch = chunkText.match(/JSON\.parse\(['"](.*?)['"]\)/);
         if (jsonMatch) {
           let jsonString = jsonMatch[1]
@@ -614,7 +614,7 @@ const LocalizationUtils = {
             // Try direct extraction
           }
         }
-        
+
         const jsonStart = chunkText.indexOf('{');
         const jsonEnd = chunkText.lastIndexOf('}') + 1;
         if (jsonStart !== -1 && jsonEnd > jsonStart) {

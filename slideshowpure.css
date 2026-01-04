@@ -28,11 +28,11 @@
 
 @keyframes kenBurnsZoomIn {
   from {
-    transform: scale(1);
+    transform: scale3d(1, 1, 0);
   }
 
   to {
-    transform: scale(1.1);
+    transform: scale3d(1.1, 1.1, 0.1);
   }
 }
 

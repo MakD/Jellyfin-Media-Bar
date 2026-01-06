@@ -115,6 +115,10 @@
   transition: width 0.2s ease-in-out;
 }
 
+.layout-mobile .splashLogo {
+height: 12%;
+}
+
 .backdrop.low-quality {
   filter: blur(0.5px);
   transform: scale(1.01);

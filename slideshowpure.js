@@ -776,7 +776,7 @@ const ApiUtils = {
       console.log("Fetching random items from server...");
 
       const response = await fetch(
-        `${STATE.jellyfinData.serverAddress}/Items?IncludeItemTypes=Movie,Series&Recursive=true&hasOverview=true&imageTypes=Logo,Backdrop&sortBy=Random&isPlayed=False&enableUserData=true&Limit=${CONFIG.maxItems}&fields=Id`,
+        `${STATE.jellyfinData.serverAddress}/Items?IncludeItemTypes=Movie,Series&Recursive=true&hasOverview=true&imageTypes=Logo,Backdrop&sortBy=Random&isPlayed=False&enableUserData=true&Limit=${CONFIG.maxItems}&fields=Id,ImageTags`,
         {
           headers: this.getAuthHeaders(),
         }
@@ -796,7 +796,10 @@ const ApiUtils = {
         `Successfully fetched ${items.length} random items from server`
       );
 
-      return items.map((item) => item.Id);
+      return items
+        .filter(item => item.ImageTags && item.ImageTags.Logo)
+        .map((item) => item.Id);
+
     } catch (error) {
       console.error("Error fetching item IDs:", error);
       return [];

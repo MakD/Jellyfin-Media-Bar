@@ -400,6 +400,7 @@ const resetSlideshowState = () => {
   STATE.slideshow.totalItems = 0;
   STATE.slideshow.isLoading = false;
   STATE.slideshow.playSignals = {};
+  STATE.slideshow.hasTrailer = {};
 };
 
 /**
@@ -828,11 +829,13 @@ const LocalizationUtils = {
         const deviceId = window.ApiClient.deviceId();
         if (deviceId) {
           const deviceKey = `${deviceId}-language`;
-          locale = localStorage.getItem(deviceKey).toLowerCase();
+          const val = localStorage.getItem(deviceKey);
+          if (val) locale = val.toLowerCase();
         }
       }
       if (!locale) {
-        locale = localStorage.getItem("language").toLowerCase();
+        const val = localStorage.getItem("language");
+        if (val) locale = val.toLowerCase();
       }
     } catch (e) {
       console.warn("🎬 Media Bar:", "Could not access localStorage for language:", e);
@@ -1763,6 +1766,8 @@ const SlideCreator = {
     const shouldPlayVideo = enableVideo && (!isMobile || enableMobileVideo);
 
     if (trailerUrl && shouldPlayVideo) {
+      STATE.slideshow.hasTrailer = STATE.slideshow.hasTrailer || {};
+      STATE.slideshow.hasTrailer[itemId] = true;
       let isYoutube = false;
       let videoId = null;
 
@@ -1806,8 +1811,8 @@ const SlideCreator = {
         // Create an iframe upfront
         const ytPlayerIframe = SlideUtils.createElement("iframe", {
           id: `youtube-player-${itemId}`,
-          src: `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&autoplay=0&controls=0&playsinline=1&mute=${STATE.slideshow.isMuted ? 1 : 0}&origin=${encodeURIComponent(window.location.origin)}`,
-          style: "width: 100%; height: 100%; border: none;",
+          src: `https://www.youtube-nocookie.com/embed/${videoId}?enablejsapi=1&playsinline=1&origin=${encodeURIComponent(window.location.origin)}`,
+          style: "width: 100%; height: 100%; border: none; pointer-events: none;",
           allow: "autoplay; encrypted-media",
           referrerpolicy: "strict-origin-when-cross-origin",
           allowfullscreen: "true"
@@ -2331,11 +2336,12 @@ const SlideCreator = {
   /**
    * Creates a slide for an item and adds it to the container
    * @param {string} itemId - Item ID
+   * @param {boolean} forceRecreate - Force recreation of the slide
    * @returns {Promise<HTMLElement>} Created slide element
    */
-  async createSlideForItemId(itemId) {
+  async createSlideForItemId(itemId, forceRecreate = false) {
     try {
-      if (STATE.slideshow.createdSlides[itemId]) {
+      if (!forceRecreate && STATE.slideshow.createdSlides[itemId]) {
         return document.querySelector(`.slide[data-item-id="${itemId}"]`);
       }
 
@@ -2470,10 +2476,29 @@ const SlideshowManager = {
 
       index = Math.max(0, Math.min(index, totalItems - 1));
       const currentItemId = STATE.slideshow.itemIds[index];
+      
+      STATE.slideshow.currentSlideIndex = index;
 
       let currentSlide = document.querySelector(
         `.slide[data-item-id="${currentItemId}"]`
       );
+
+      const isLowPower = isLowPowerDevice();
+      const isIOSApp = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const limitVideos = isLowPower || isIOSApp;
+      
+      // JIT recreating video to bypass OOM limitations on low-end devices
+      if (limitVideos && currentSlide && STATE.slideshow.hasTrailer && STATE.slideshow.hasTrailer[currentItemId] === true) {
+        const hasVideo = currentSlide.querySelector('.video-backdrop');
+        if (!hasVideo) {
+          console.log("🎬 Media Bar:", "JIT recreating slide to embed video on constrained device");
+          const newSlide = await SlideCreator.createSlideForItemId(currentItemId, true);
+          currentSlide.replaceWith(newSlide);
+          currentSlide = newSlide;
+          this.upgradeSlideImageQuality(currentSlide);
+        }
+      }
+      
       if (!currentSlide) {
         currentSlide = await SlideCreator.createSlideForItemId(currentItemId);
         this.upgradeSlideImageQuality(currentSlide);
@@ -2490,6 +2515,21 @@ const SlideshowManager = {
 
       if (previousVisibleSlide) {
         previousVisibleSlide.classList.remove("active");
+
+        // Prune old video to save memory on low-end devices
+        if (limitVideos) {
+           const prevItemId = previousVisibleSlide.dataset.itemId;
+           if (prevItemId && STATE.slideshow.hasTrailer && STATE.slideshow.hasTrailer[prevItemId] === true) {
+               const oldVideo = previousVisibleSlide.querySelector('.video-backdrop');
+               if (oldVideo) {
+                   oldVideo.remove();
+                   console.log("🎬 Media Bar:", "Pruned hidden slide video to save RAM");
+                   if (STATE.slideshow.videoPlayers && STATE.slideshow.videoPlayers[prevItemId]) {
+                       delete STATE.slideshow.videoPlayers[prevItemId];
+                   }
+               }
+           }
+        }
       }
 
       void currentSlide.offsetWidth;
@@ -2534,6 +2574,15 @@ const SlideshowManager = {
 
       // 3. Play and Reset current video
       const videoBackdrop = currentSlide.querySelector('.video-backdrop');
+      
+      // Hide video to prevent flash of paused iframe when revisiting slides
+      if (videoBackdrop) {
+          videoBackdrop.style.transition = "none";
+          videoBackdrop.style.opacity = "0";
+          // Force layout reflow to apply the instant opacity jump
+          void videoBackdrop.offsetWidth;
+          videoBackdrop.style.transition = "opacity 1.2s ease-in-out";
+      }
 
       // Auto-unpause when a video slide becomes active
       if (videoBackdrop && STATE.slideshow.isPaused) {
@@ -2598,6 +2647,11 @@ const SlideshowManager = {
           
           STATE.slideshow.playSignals[currentItemId] = true;
 
+          if (document.hidden) {
+            console.log("🎬 Media Bar:", "Tab is hidden, deferring video playback until visible.");
+            return;
+          }
+
           if (videoBackdrop.tagName === 'VIDEO') {
             videoBackdrop.play().catch(e => {
               if (!STATE.slideshow.isMuted) {
@@ -2636,6 +2690,7 @@ const SlideshowManager = {
         };
 
         if (CONFIG.backdropVideoDelay > 0) {
+          STATE.slideshow.currentPlayVideoLogic = playVideoLogic;
           STATE.slideshow.backdropVideoTimeout = setTimeout(playVideoLogic, CONFIG.backdropVideoDelay);
         } else {
           playVideoLogic();
@@ -2652,8 +2707,6 @@ const SlideshowManager = {
         const logo = currentSlide.querySelector(".logo");
         if (logo) logo.classList.add("animate");
       }
-
-      STATE.slideshow.currentSlideIndex = index;
 
       if (index === 0 || !previousVisibleSlide) {
         const dotsContainer = container.querySelector(".dots-container");
@@ -3800,9 +3853,17 @@ const initPageVisibilityHandler = () => {
       }
     } else {
       console.log("🎬 Media Bar:", "Tab active - resuming slideshow");
+      
+      const currentItemId = STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+      
+      // Resume video if the play signal was given (either before hiding, or timer expired while hidden)
+      if (currentItemId && STATE.slideshow.currentPlayVideoLogic) {
+          if (STATE.slideshow.playSignals && STATE.slideshow.playSignals[currentItemId] === true) {
+             STATE.slideshow.currentPlayVideoLogic();
+          }
+      }
+
       if (!STATE.slideshow.isPaused) {
-        const currentItemId = STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
-        
         if (wasVideoPlayingBeforeHide && currentItemId && STATE.slideshow.videoPlayers && STATE.slideshow.videoPlayers[currentItemId]) {
           const player = STATE.slideshow.videoPlayers[currentItemId];
           

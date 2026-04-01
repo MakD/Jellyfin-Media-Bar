@@ -2621,23 +2621,26 @@ const SlideshowManager = {
           }
         } else if (STATE.slideshow.videoPlayers && STATE.slideshow.videoPlayers[currentItemId]) {
           const player = STATE.slideshow.videoPlayers[currentItemId];
-          if (player && typeof player.cueVideoById === 'function' && player._videoId) {
-            // Use cueVideoById to buffer video without auto-playing it
-            player.cueVideoById({
-              videoId: player._videoId,
-              startSeconds: player._startTime || 0,
-              endSeconds: player._endTime
-            });
+          // If delay > 0, buffer the video silently using cueVideoById. If 0, skip and load directly later.
+          if (CONFIG.backdropVideoDelay > 0) {
+            if (player && typeof player.cueVideoById === 'function' && player._videoId) {
+              // Use cueVideoById to buffer video without auto-playing it
+              player.cueVideoById({
+                videoId: player._videoId,
+                startSeconds: player._startTime || 0,
+                endSeconds: player._endTime
+              });
 
-            if (STATE.slideshow.isMuted) {
-              player.mute();
-            } else {
-              player.unMute();
-              player.setVolume(40);
+              if (STATE.slideshow.isMuted) {
+                player.mute();
+              } else {
+                player.unMute();
+                player.setVolume(40);
+              }
+            } else if (player && typeof player.seekTo === 'function') {
+              const startTime = player._startTime || 0;
+              player.seekTo(startTime);
             }
-          } else if (player && typeof player.seekTo === 'function') {
-            const startTime = player._startTime || 0;
-            player.seekTo(startTime);
           }
         }
 
@@ -2669,22 +2672,38 @@ const SlideshowManager = {
             });
           } else if (STATE.slideshow.videoPlayers && STATE.slideshow.videoPlayers[currentItemId]) {
             const player = STATE.slideshow.videoPlayers[currentItemId];
-            if (player && typeof player.playVideo === 'function') {
-              player.playVideo();
-
-              if (!STATE.slideshow.isMuted) {
-                // Check if playback successfully started, otherwise fallback to muted
-                setTimeout(() => {
-                  if (!currentSlide.classList.contains('active')) return;
-                  if (player.getPlayerState &&
-                    player.getPlayerState() !== YT.PlayerState.PLAYING &&
-                    player.getPlayerState() !== YT.PlayerState.BUFFERING) {
-                    console.log("🎬 Media Bar:", "YouTube didn't start playback, retrying muted...");
-                    player.mute();
-                    player.playVideo();
-                  }
-                }, 1000);
+            
+            if (CONFIG.backdropVideoDelay === 0 && player && typeof player.loadVideoById === 'function' && player._videoId) {
+              // Zero delay: Natively load and play immediately to preserve Autoplay tokens
+              player.loadVideoById({
+                videoId: player._videoId,
+                startSeconds: player._startTime || 0,
+                endSeconds: player._endTime
+              });
+              
+              if (STATE.slideshow.isMuted) {
+                player.mute();
+              } else {
+                player.unMute();
+                player.setVolume(40);
               }
+            } else if (player && typeof player.playVideo === 'function') {
+              // Delayed: Use playVideo on the buffered cue
+              player.playVideo();
+            }
+
+            if (!STATE.slideshow.isMuted) {
+              // Check if playback successfully started, otherwise fallback to muted
+              setTimeout(() => {
+                if (!currentSlide.classList.contains('active')) return;
+                if (player.getPlayerState &&
+                  player.getPlayerState() !== YT.PlayerState.PLAYING &&
+                  player.getPlayerState() !== YT.PlayerState.BUFFERING) {
+                  console.log("🎬 Media Bar:", "YouTube didn't start playback, retrying muted...");
+                  player.mute();
+                  player.playVideo();
+                }
+              }, 1000);
             }
           }
         };

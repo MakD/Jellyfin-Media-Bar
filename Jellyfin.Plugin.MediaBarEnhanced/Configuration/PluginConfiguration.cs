@@ -39,7 +39,6 @@ namespace Jellyfin.Plugin.MediaBarEnhanced.Configuration
         public bool HideArrowsOnMobile { get; set; } = true;
         public string CustomMediaIds { get; set; } = "";
         public bool EnableCustomMediaIds { get; set; } = true;
-        public string PreferredVideoQuality { get; set; } = "Auto";
         public bool EnableSeasonalContent { get; set; } = false;
         public bool ExcludeSeasonalContent { get; set; } = true;
         public string SeasonalSections { get; set; } = "[]";

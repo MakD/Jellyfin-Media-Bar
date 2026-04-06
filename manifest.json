@@ -13,8 +13,8 @@
         "changelog": "- fix autoplay issue when using url instead of ip to access jellyfin",
         "targetAbi": "10.11.0.0",
         "sourceUrl": "https://github.com/CodeDevMLH/jellyfin-plugin-media-bar-enhanced/releases/download/v1.9.2.0/Jellyfin.Plugin.MediaBarEnhanced.zip",
-        "checksum": "",
-        "timestamp": ""
+        "checksum": "308826ee5e7e08d62797a2d635def071",
+        "timestamp": "2026-04-06T01:04:53Z"
       },
       {
         "version": "1.9.1.0",

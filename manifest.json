@@ -2,12 +2,20 @@
   {
     "guid": "d7e11d57-819b-4bdd-a88d-53c5f5560225",
     "name": "Media Bar Enhanced",
-    "description": "A feature-rich fork of the original Media Bar script by MakD that brings your home screen to life.\n\n-> 100% Configurable via Web UI: Manage all features, lists, and settings effortlessly through the plugin configuration page.\n\nKey Highlights:\n- Cinematic Video Backdrops: Supports local & YouTube trailers (incl. SponsorBlock)\n- Custom Content: Curate your slideshow with specific Collections, Playlists, or seasonal events\n\nAdditional Features:\n- Full-width immersive mode\n- Smart resolution handling (up to 4K)\n- Full keyboard navigation & playback control\n- Wait-for-trailer options\n- Customizable pagination & animations\n\nIf you do not have write permissions to the web folder, please also install the file-transformation plugin.",
+    "description": "▶ Feature-rich Media Bar fork that brings your home screen to life. ★ 100% Web UI control. ★ Backdrops: Cinematic full-width videos (YouTube/Local) with SponsorBlock (skip intros/outros (only YT Trailer)) and smart 'local-first' preference. ★ Dynamic Content: Display Playlists, Collections (Boxsets), or Seasonal holiday items. Sort by Random, Year, or Premiere Date with Parental Rating & Release Year filters. ★ Customization: Customizable overlays (branding/messages), pagination (dots/counter), and client-side settings to allow per-device overrides. ★ Advanced: Many settings for individual configuration. ⚠ Note: Requires 'file-transformation' plugin if write permissions are restricted.",
     "overview": "Transforms your Jellyfin home screen with an immersive, fully configurable media slideshow featuring video backdrops.",
     "owner": "CodeDevMLH",
     "category": "General",
     "imageUrl": "https://raw.githubusercontent.com/CodeDevMLH/jellyfin-plugin-media-bar-enhanced/refs/heads/main/logo.png",
     "versions": [
+      {
+        "version": "1.9.3.0",
+        "changelog": "- Refactor script loading logic to ensure proper insertion of YouTube API script",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/CodeDevMLH/jellyfin-plugin-media-bar-enhanced/releases/download/v1.9.3.0/Jellyfin.Plugin.MediaBarEnhanced.zip",
+        "checksum": "",
+        "timestamp": ""
+      },
       {
         "version": "1.9.2.0",
         "changelog": "- fix autoplay issue when using url instead of ip to access jellyfin",

@@ -3,7 +3,7 @@
  * Modified by CodeDevMLH
  * 
  * New features:
- * - optional Trailer background video support
+ * - optional Trailer background video support (youtube or local trailer/backdrop videos)
  * - option to make video backdrops full width
  * - SponsorBlock support to skip intro/outro segments
  * - option to always show arrows
@@ -15,8 +15,11 @@
  * - option to put collection (boxsets) IDs into the slideshow to display their items
  * - option to enable client-side settings (allow users to override settings locally on their device)
  * - option to enable seasonal content (only show items that are relevant to the current season/holiday)
- * - option to prefer local trailers (from the media item) over online sources
+ * - option to prefer local trailers or backdrop videos (from the media item) over online sources
  * - options to sort the content by various criteria (PremiereDate, ProductionYear, Random, Original order, etc.)
+ * - options to set parental rating and release date limits to filter out unwanted content
+ * - options to customize the overlay (text, image, style, position, etc.) with e.g. seasonal messages or custom branding
+ * - many other settings in the advanced settings tab
  */
 
 @import url(https://fonts.googleapis.com/css2?family=Archivo+Narrow:ital,wght@0,400..700;1,400..700&display=swap);

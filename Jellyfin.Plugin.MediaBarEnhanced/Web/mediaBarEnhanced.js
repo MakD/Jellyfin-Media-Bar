@@ -3677,10 +3677,10 @@ const MediaBarEnhancedSettingsManager = {
     button.title = 'Media Bar Settings';
     // button.innerHTML = '<span class="material-icons">tune</span>';
 
-    // button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW.svg" style="width: 24px; height: 24px; vertical-align: middle;">';
+    // button.innerHTML = `<img src="${window.ApiClient.getUrl('/MediaBarEnhanced/Resources/assets/logo_SW.svg')}" style="width: 24px; height: 24px; vertical-align: middle;">`;
     // currently not optimal, as it's egg-shaped due to the svg format... but if it's square, it's very small...
-    // button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW.svg" draggable="false" style="width: 52px; height: 24px; vertical-align: middle; pointer-events: none;">';
-    // button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW_SHORT.svg" draggable="false" style="width: 41px; height: 24px; vertical-align: middle; pointer-events: none;">';
+    // button.innerHTML = `<img src="${window.ApiClient.getUrl('/MediaBarEnhanced/Resources/assets/logo_SW.svg')}" draggable="false" style="width: 52px; height: 24px; vertical-align: middle; pointer-events: none;">`;
+    // button.innerHTML = `<img src="${window.ApiClient.getUrl('/MediaBarEnhanced/Resources/assets/logo_SW_SHORT.svg')}" draggable="false" style="width: 41px; height: 24px; vertical-align: middle; pointer-events: none;">`;
     button.innerHTML = `<img src="${window.ApiClient.getUrl('/MediaBarEnhanced/Resources/assets/logo_SW_MINIMAL.svg')}" draggable="false" style="width: 24px; height: 24px; vertical-align: middle; pointer-events: none;">`;
     
     button.style.verticalAlign = 'middle';
@@ -3991,7 +3991,14 @@ const slidesInit = async () => {
       const img = document.createElement("img");
       const imgStyle = CONFIG.customOverlayImageStyle || "None";
       img.className = `custom-overlay-image custom-overlay-img-${imgStyle}`;
-      img.src = activeOverlayImage;
+      
+      // If activeOverlayImage starts with /, adjust for base URL
+      if (activeOverlayImage.startsWith('/') && !activeOverlayImage.startsWith('//')) {
+          img.src = window.ApiClient.getUrl(activeOverlayImage);
+      } else {
+          img.src = activeOverlayImage;
+      }
+      
       overlayContainer.appendChild(img);
     } else if (showText) {
       const p = document.createElement("p");

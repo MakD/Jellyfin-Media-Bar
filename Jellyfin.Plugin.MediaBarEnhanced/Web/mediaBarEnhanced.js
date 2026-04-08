@@ -3681,7 +3681,7 @@ const MediaBarEnhancedSettingsManager = {
     // currently not optimal, as it's egg-shaped due to the svg format... but if it's square, it's very small...
     // button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW.svg" draggable="false" style="width: 52px; height: 24px; vertical-align: middle; pointer-events: none;">';
     // button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW_SHORT.svg" draggable="false" style="width: 41px; height: 24px; vertical-align: middle; pointer-events: none;">';
-    button.innerHTML = '<img src="/MediaBarEnhanced/Resources/assets/logo_SW_MINIMAL.svg" draggable="false" style="width: 24px; height: 24px; vertical-align: middle; pointer-events: none;">';
+    button.innerHTML = `<img src="${window.ApiClient.getUrl('/MediaBarEnhanced/Resources/assets/logo_SW_MINIMAL.svg')}" draggable="false" style="width: 24px; height: 24px; vertical-align: middle; pointer-events: none;">`;
     
     button.style.verticalAlign = 'middle';
 

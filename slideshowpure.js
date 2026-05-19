@@ -1,5 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v4.0.5
+ * Jellyfin Slideshow by M0RPH3US v4.0.6
  */
 
 //Core Module Configuration
@@ -17,8 +17,8 @@ const CONFIG = {
   maxPlotLength: 360,
   maxMovies: 15,
   maxTvShows: 15,
-  maxItems: 500,
-  preloadCount: 3,
+  maxItems: 50,
+  preloadCount: 1,
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
@@ -757,6 +757,12 @@ const ApiUtils = {
     try {
       if (STATE.slideshow.loadedItems[itemId]) {
         return STATE.slideshow.loadedItems[itemId];
+      }
+
+      const MAX_CACHED_ITEMS = 20;
+      const cacheKeys = Object.keys(STATE.slideshow.loadedItems);
+      if (cacheKeys.length >= MAX_CACHED_ITEMS) {
+        delete STATE.slideshow.loadedItems[cacheKeys[0]];
       }
 
       const response = await fetch(
@@ -1814,7 +1820,7 @@ const SlideshowManager = {
    */
   pruneSlideCache() {
     const currentIndex = STATE.slideshow.currentSlideIndex;
-    const keepRange = 5;
+    const keepRange = 2;
 
     Object.keys(STATE.slideshow.createdSlides).forEach((itemId) => {
       const index = STATE.slideshow.itemIds.indexOf(itemId);
@@ -2036,7 +2042,7 @@ const SlideshowManager = {
       await this.updateCurrentSlide(0);
 
       STATE.slideshow.slideInterval = new SlideTimer(() => {
-        if (!STATE.slideshow.isPaused) {
+        if (!STATE.slideshow.isPaused && VisibilityObserver.wasVisible) {
           this.nextSlide();
         }
       }, CONFIG.shuffleInterval);

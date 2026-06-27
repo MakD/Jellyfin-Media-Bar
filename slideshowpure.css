@@ -267,6 +267,15 @@
   margin: 0 auto;
 }
 
+.jellyfin-v12-layout #slides-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  z-index: 1;
+}
+
 .arrow {
   position: absolute;
   top: 50%;

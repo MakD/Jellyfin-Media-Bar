@@ -391,6 +391,59 @@ const waitForApiClientAndInitialize = () => {
 waitForApiClientAndInitialize();
 
 /**
+ * Jellyfin 12 moved the web app into a viewport-sized React/MUI shell.
+ * Appending the media bar to <body> still works on Jellyfin 10 because
+ * #reactRoot has no layout height there, but on Jellyfin 12 the appended
+ * bar lands below the full-height app. Keep detection DOM-based so release
+ * candidates and custom builds do not need a hard-coded version check.
+ */
+const LayoutUtils = {
+  V12_LAYOUT_CLASS: "jellyfin-v12-layout",
+
+  isJellyfinV12Layout() {
+    const reactRoot = document.getElementById("reactRoot");
+    if (!reactRoot) return false;
+
+    const hasMuiShell = Boolean(
+      document.querySelector(
+        "header.MuiAppBar-root, .MuiAppBar-root, main.MuiBox-root",
+      ),
+    );
+    const rootRect = reactRoot.getBoundingClientRect();
+    const reactRootFillsViewport =
+      rootRect.height >= Math.min(window.innerHeight * 0.5, 320);
+
+    return hasMuiShell || reactRootFillsViewport;
+  },
+
+  syncLayoutClass(container) {
+    const isV12Layout = this.isJellyfinV12Layout();
+
+    [document.documentElement, document.body].forEach((element) => {
+      if (element) {
+        element.classList.toggle(this.V12_LAYOUT_CLASS, isV12Layout);
+      }
+    });
+
+    if (container) {
+      container.dataset.jellyfinLayout = isV12Layout ? "v12" : "legacy";
+    }
+
+    return isV12Layout;
+  },
+
+  mountSlidesContainer(container) {
+    this.syncLayoutClass(container);
+
+    if (container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+
+    return container;
+  },
+};
+
+/**
  * Utility functions for slide creation and management
  */
 const SlideUtils = {
@@ -477,9 +530,8 @@ const SlideUtils = {
     let container = document.getElementById("slides-container");
     if (!container) {
       container = this.createElement("div", { id: "slides-container" });
-      document.body.appendChild(container);
     }
-    return container;
+    return LayoutUtils.mountSlidesContainer(container);
   },
 
   /**
@@ -2333,6 +2385,7 @@ window.slideshowPure = {
   SlideCreator,
   SlideshowManager,
   VisibilityObserver,
+  LayoutUtils,
   initSlideshowData: () => {
     SlideshowManager.loadSlideshowData();
   },

@@ -267,15 +267,6 @@
   margin: 0 auto;
 }
 
-.jellyfin-v12-layout #slides-container {
-  position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  margin: 0;
-  z-index: 1;
-}
-
 .arrow {
   position: absolute;
   top: 50%;
@@ -907,4 +898,32 @@
   .dots-container {
     top: calc(50% + 15vh);
   }
+}
+
+/* Jellyfin 12 uses a fixed MUI app shell. Keep the fullscreen bar in the
+   viewport and give the Home rows a real transition zone below the CTAs. */
+.jellyfin-v12-layout #slides-container {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+  z-index: 1;
+}
+
+.jellyfin-v12-layout .homeSectionsContainer {
+  top: clamp(31rem, calc(50vh + 12rem), 44rem);
+  z-index: 6;
+}
+
+.jellyfin-v12-layout #slides-container .logo-container,
+.jellyfin-v12-layout #slides-container .info-container,
+.jellyfin-v12-layout #slides-container .genre,
+.jellyfin-v12-layout #slides-container .plot-container,
+.jellyfin-v12-layout #slides-container .button-container,
+.jellyfin-v12-layout #slides-container .dots-container,
+.jellyfin-v12-layout #slides-container .arrow,
+.jellyfin-v12-layout #slides-container .volume-toggle,
+.jellyfin-v12-layout #slides-container .pause-button {
+  z-index: 8;
 }

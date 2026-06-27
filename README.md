@@ -8,7 +8,7 @@
 
 The fullscreen version has a new look (in beta), and support for different screen sizes has been added. For any visual goof-ups, please open a bug report, including the device being used and whether it is encountered in portrait or landscape mode.
 
-Jellyfin 12 uses a new React/MUI app shell. This project detects that layout automatically and pins the media bar to the viewport so the fullscreen bar still appears on Home instead of rendering below the app.
+Jellyfin 12 uses a new React/MUI app shell. Use the `v12` branch for Jellyfin 12 so the media bar is pinned to the new viewport shell and the Home rows are spaced below the hero controls instead of colliding with them.
 
 
 Thanks to the Man, the Legend [BobHasNoSoul](https://github.com/BobHasNoSoul) for his work on the [jellyfinfeatured](https://github.com/BobHasNoSoul/jellyfin-featured) and [SethBacon](https://forum.jellyfin.org/u-sethbacon) and [TedHinklater](https://github.com/tedhinklater) for their take on the [Jellyfin-Featured-Content-Bar](https://github.com/tedhinklater/Jellyfin-Featured-Content-Bar). 
@@ -45,6 +45,13 @@ Here I present my version with some code improvements, loading optimizations, an
 ```
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@latest/slideshowpure.css" />
     <script async src="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@latest/slideshowpure.js"></script>
+```
+
+For Jellyfin 12, use the dedicated branch:
+
+```
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@v12/slideshowpure.css" />
+    <script async src="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@v12/slideshowpure.js"></script>
 ```
 </details>
 

@@ -60,6 +60,7 @@ const STATE = {
     players: {},
     ytPromise: null,
     skipSegmentCache: {},
+    trailerStartTimes: {},
     isMuted: true,
     isVideoPlaying: false,
   },
@@ -327,6 +328,7 @@ const resetSlideshowState = () => {
   STATE.slideshow.createdSlides = {};
   STATE.slideshow.totalItems = 0;
   STATE.slideshow.isLoading = false;
+  STATE.slideshow.trailerStartTimes = {};
 };
 
 /**
@@ -1785,6 +1787,11 @@ const SlideCreator = {
 
     (async () => {
       const startTime = await ApiUtils.getSkipSegments(videoId);
+      STATE.slideshow.trailerStartTimes[itemId] = startTime;
+      if (trailerContainer) {
+        trailerContainer.dataset.startTime = String(startTime);
+      }
+
       const YT = await loadYouTubeAPI();
       if (!document.getElementById(`trailer-${itemId}`)) return;
 
@@ -1975,6 +1982,19 @@ const SlideshowManager = {
         .forEach((image) => (image.fetchPriority = "low"));
     }
 
+    container.querySelectorAll(".video-container.active").forEach((video) => {
+      if (!video.closest(`.slide[data-item-id="${currentItemId}"]`)) {
+        video.classList.remove("active");
+      }
+    });
+    container
+      .querySelectorAll(".backdrop.with-video, .plot-container.with-video")
+      .forEach((element) => {
+        if (!element.closest(`.slide[data-item-id="${currentItemId}"]`)) {
+          element.classList.remove("with-video");
+        }
+      });
+
     currentSlide.classList.add("active");
     currentSlide
       .querySelectorAll("img")
@@ -2008,6 +2028,12 @@ const SlideshowManager = {
           if (player && typeof player.playVideo === "function") {
             try {
               PlayerUtils.applyMuteState(player);
+              const startTime =
+                STATE.slideshow.trailerStartTimes[currentItemId] ??
+                Number(
+                  currentSlide.querySelector(".video-container")?.dataset
+                    .startTime || 0,
+                );
               PlayerUtils.call(player, "seekTo", startTime);
               if (!PlayerUtils.call(player, "playVideo")) {
                 fallbackToTimer();
@@ -2127,6 +2153,7 @@ const SlideshowManager = {
             console.warn("Error destroying player:", e);
           }
           delete STATE.slideshow.players[itemId];
+          delete STATE.slideshow.trailerStartTimes[itemId];
         }
 
         delete STATE.slideshow.loadedItems[itemId];
@@ -2273,8 +2300,18 @@ const SlideshowManager = {
     if (!slide) return;
     const backdrop = slide.querySelector(".backdrop");
     const plotContainer = slide.querySelector(".plot-container");
+    const currentItemId =
+      STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
 
     if (event.data === YT.PlayerState.PLAYING) {
+      if (itemId !== currentItemId || !slide.classList.contains("active")) {
+        PlayerUtils.call(STATE.slideshow.players[itemId], "pauseVideo");
+        if (container) container.classList.remove("active");
+        if (backdrop) backdrop.classList.remove("with-video");
+        if (plotContainer) plotContainer.classList.remove("with-video");
+        return;
+      }
+
       STATE.slideshow.isVideoPlaying = true;
       if (container) container.classList.add("active");
       if (backdrop) backdrop.classList.add("with-video");

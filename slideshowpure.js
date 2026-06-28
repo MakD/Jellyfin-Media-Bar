@@ -18,11 +18,15 @@ const CONFIG = {
   maxMovies: 15,
   maxTvShows: 15,
   maxItems: 50,
-  preloadCount: 1,
+  preloadCount: 2,
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
   layoutMode: "auto",
+  imageSizing: {
+    backdropMaxWidth: 2560,
+    logoMaxWidth: 1400,
+  },
 };
 
 // State management
@@ -1366,12 +1370,15 @@ const SlideCreator = {
    * @param {string} imageType - Image type (Backdrop, Logo, Primary, etc.)
    * @param {number} [index] - Image index (for Backdrop, Primary, etc.)
    * @param {string} serverAddress - Server address
-   * @param {number} [quality] - Image quality (0-100). If tag is available, both tag and quality are used.
-   * @returns {string} Image URL with tag parameter (and quality if tag available), or quality-only fallback
+   * @param {number|Object} [options] - Image quality number, or image request options.
+   * @returns {string} Image URL with cache tag and sizing parameters.
    */
-  buildImageUrl(item, imageType, index, serverAddress, quality) {
+  buildImageUrl(item, imageType, index, serverAddress, options = {}) {
     const itemId = item.Id;
     let tag = null;
+    const requestOptions =
+      typeof options === "number" ? { quality: options } : options || {};
+    const { quality, maxWidth, maxHeight } = requestOptions;
 
     if (imageType === "Backdrop") {
       if (
@@ -1400,13 +1407,13 @@ const SlideCreator = {
       baseUrl = `${serverAddress}/Items/${itemId}/Images/${imageType}`;
     }
 
-    if (tag) {
-      const qualityParam = quality !== undefined ? `&quality=${quality}` : "";
-      return `${baseUrl}?tag=${tag}${qualityParam}`;
-    } else {
-      const qualityParam = quality !== undefined ? quality : 90;
-      return `${baseUrl}?quality=${qualityParam}`;
-    }
+    const params = new URLSearchParams();
+    if (tag) params.set("tag", tag);
+    if (quality !== undefined || !tag) params.set("quality", `${quality ?? 90}`);
+    if (maxWidth) params.set("maxWidth", `${maxWidth}`);
+    if (maxHeight) params.set("maxHeight", `${maxHeight}`);
+
+    return `${baseUrl}?${params.toString()}`;
   },
 
   /**
@@ -1460,7 +1467,10 @@ const SlideCreator = {
 
     const backdrop = SlideUtils.createElement("img", {
       className: "backdrop high-quality",
-      src: this.buildImageUrl(item, "Backdrop", 0, serverAddress, 60),
+      src: this.buildImageUrl(item, "Backdrop", 0, serverAddress, {
+        quality: 60,
+        maxWidth: CONFIG.imageSizing.backdropMaxWidth,
+      }),
       alt: LocalizationUtils.getLocalizedString("Backdrop", "Backdrop"),
       loading: "eager",
     });
@@ -1476,7 +1486,10 @@ const SlideCreator = {
 
     const logo = SlideUtils.createElement("img", {
       className: "logo high-quality",
-      src: this.buildImageUrl(item, "Logo", undefined, serverAddress, 40),
+      src: this.buildImageUrl(item, "Logo", undefined, serverAddress, {
+        quality: 40,
+        maxWidth: CONFIG.imageSizing.logoMaxWidth,
+      }),
       alt: item.Name,
       loading: "eager",
     });
@@ -1732,11 +1745,48 @@ const SlideCreator = {
     return placeholder;
   },
 
-  /**
-   * Creates a slide for an item and adds it to the container
-   * @param {string} itemId - Item ID
-   * @returns {Promise<HTMLElement>} Created slide element
-   */
+  warmSlideImages(slide) {
+    if (!slide) return;
+
+    slide.querySelectorAll("img").forEach((image) => {
+      image.loading = "eager";
+      image.decoding = "async";
+      image.fetchPriority = slide.classList.contains("active") ? "high" : "low";
+    });
+  },
+
+  initializeTrailerPlayer(itemId, videoId, trailerContainer) {
+    if (!videoId) return;
+
+    (async () => {
+      const startTime = await ApiUtils.getSkipSegments(videoId);
+      const YT = await loadYouTubeAPI();
+      if (!document.getElementById(`trailer-${itemId}`)) return;
+
+      STATE.slideshow.players[itemId] = new YT.Player(`yt-player-${itemId}`, {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          iv_load_policy: 3,
+          modestbranding: 1,
+          rel: 0,
+          showinfo: 0,
+          start: startTime,
+        },
+        events: {
+          onStateChange: (e) =>
+            SlideshowManager.onPlayerStateChange(e, itemId, trailerContainer),
+          onReady: (e) => PlayerUtils.call(e.target, "mute"),
+        },
+      });
+    })().catch((error) => {
+      console.warn("Error initializing trailer player:", error);
+    });
+  },
+
   /**
    * Creates a slide for an item and adds it to the container
    * @param {string} itemId - Item ID
@@ -1750,48 +1800,22 @@ const SlideCreator = {
 
       const container = SlideUtils.getOrCreateSlidesContainer();
       const item = await ApiUtils.fetchItemDetails(itemId);
+      if (!item) return null;
 
-      const { slide, videoId, trailerContainer } = this.createSlideElement(
+      const slideData = this.createSlideElement(
         item,
         item.Type === "Movie" ? "Movie" : "TV Show",
       );
+      if (!slideData?.slide) return null;
+
+      const { slide, videoId, trailerContainer } = slideData;
+      this.warmSlideImages(slide);
 
       container.appendChild(slide);
       STATE.slideshow.createdSlides[itemId] = true;
 
       if (videoId) {
-        const startTime = await ApiUtils.getSkipSegments(videoId);
-
-        loadYouTubeAPI().then((YT) => {
-          if (!document.getElementById(`trailer-${itemId}`)) return;
-
-          STATE.slideshow.players[itemId] = new YT.Player(
-            `yt-player-${itemId}`,
-            {
-              videoId: videoId,
-              playerVars: {
-                autoplay: 0,
-                controls: 0,
-                disablekb: 1,
-                fs: 0,
-                iv_load_policy: 3,
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                start: startTime,
-              },
-              events: {
-                onStateChange: (e) =>
-                  SlideshowManager.onPlayerStateChange(
-                    e,
-                    itemId,
-                    trailerContainer,
-                  ),
-                onReady: (e) => PlayerUtils.call(e.target, "mute"),
-              },
-            },
-          );
-        });
+        this.initializeTrailerPlayer(itemId, videoId, trailerContainer);
       }
 
       return slide;
@@ -1912,11 +1936,24 @@ const SlideshowManager = {
     );
     if (!currentSlide)
       currentSlide = await SlideCreator.createSlideForItemId(currentItemId);
+    if (!currentSlide) {
+      STATE.slideshow.isTransitioning = false;
+      fallbackToTimer();
+      return;
+    }
 
     const prevVisible = container.querySelector(".slide.active");
-    if (prevVisible) prevVisible.classList.remove("active");
+    if (prevVisible) {
+      prevVisible.classList.remove("active");
+      prevVisible
+        .querySelectorAll("img")
+        .forEach((image) => (image.fetchPriority = "low"));
+    }
 
     currentSlide.classList.add("active");
+    currentSlide
+      .querySelectorAll("img")
+      .forEach((image) => (image.fetchPriority = "high"));
     if (CONFIG.slideAnimationEnabled) {
       currentSlide.querySelector(".backdrop")?.classList.add("animate");
       currentSlide.querySelector(".logo")?.classList.add("animate");
@@ -2011,16 +2048,16 @@ const SlideshowManager = {
     const totalItems = STATE.slideshow.totalItems;
     const preloadCount = CONFIG.preloadCount;
 
-    const nextIndex = (currentIndex + 1) % totalItems;
-    const itemId = STATE.slideshow.itemIds[nextIndex];
-
-    await SlideCreator.createSlideForItemId(itemId);
-
-    if (preloadCount > 1) {
-      const prevIndex = (currentIndex - 1 + totalItems) % totalItems;
+    for (let offset = 1; offset <= preloadCount; offset += 1) {
+      const nextIndex = (currentIndex + offset) % totalItems;
+      const prevIndex = (currentIndex - offset + totalItems) % totalItems;
+      const nextItemId = STATE.slideshow.itemIds[nextIndex];
       const prevItemId = STATE.slideshow.itemIds[prevIndex];
 
-      SlideCreator.createSlideForItemId(prevItemId);
+      SlideCreator.createSlideForItemId(nextItemId);
+      if (preloadCount > 1) {
+        SlideCreator.createSlideForItemId(prevItemId);
+      }
     }
   },
 
@@ -2052,7 +2089,11 @@ const SlideshowManager = {
       const index = STATE.slideshow.itemIds.indexOf(itemId);
       if (index === -1) return;
 
-      const distance = Math.abs(index - currentIndex);
+      const rawDistance = Math.abs(index - currentIndex);
+      const distance = Math.min(
+        rawDistance,
+        STATE.slideshow.totalItems - rawDistance,
+      );
       if (distance > keepRange) {
         if (STATE.slideshow.players[itemId]) {
           try {

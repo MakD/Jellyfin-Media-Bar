@@ -22,6 +22,7 @@ const CONFIG = {
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
+  layoutMode: "auto",
 };
 
 // State management
@@ -391,41 +392,59 @@ const waitForApiClientAndInitialize = () => {
 waitForApiClientAndInitialize();
 
 /**
- * Jellyfin 12 moved the web app into a viewport-sized React/MUI shell.
- * Appending the media bar to <body> still works on Jellyfin 10 because
- * #reactRoot has no layout height there, but on Jellyfin 12 the appended
- * bar lands below the full-height app. Keep detection DOM-based so release
- * candidates and custom builds do not need a hard-coded version check.
+ * Jellyfin 12 can render either the legacy Desktop shell or the newer
+ * React/MUI shell. Keep the original MediaBar layout for legacy Desktop mode
+ * and only enable the v12 support layer when the modern shell is present.
  */
 const LayoutUtils = {
+  V12_SHELL_CLASS: "jellyfin-v12-shell",
   V12_LAYOUT_CLASS: "jellyfin-v12-layout",
+  FORCE_LEGACY_MODES: new Set(["legacy", "desktop", "classic"]),
+  FORCE_MODERN_MODES: new Set(["modern", "mui", "v12"]),
 
-  isJellyfinV12Layout() {
+  configuredLayoutMode() {
+    return String(CONFIG.layoutMode || "auto").trim().toLowerCase();
+  },
+
+  isJellyfinV12Shell() {
     const reactRoot = document.getElementById("reactRoot");
     if (!reactRoot) return false;
 
-    const hasMuiShell = Boolean(
+    const rootRect = reactRoot.getBoundingClientRect();
+    return rootRect.height >= Math.min(window.innerHeight * 0.5, 320);
+  },
+
+  isJellyfinV12Layout() {
+    const configuredMode = this.configuredLayoutMode();
+    if (this.FORCE_LEGACY_MODES.has(configuredMode)) return false;
+    if (this.FORCE_MODERN_MODES.has(configuredMode)) return true;
+
+    return Boolean(
       document.querySelector(
-        "header.MuiAppBar-root, .MuiAppBar-root, main.MuiBox-root",
+        [
+          "header.MuiAppBar-root",
+          ".MuiAppBar-root",
+          "main.MuiBox-root",
+          "[class*='MuiAppBar-root']",
+          "[class*='MuiBottomNavigation-root']",
+        ].join(", "),
       ),
     );
-    const rootRect = reactRoot.getBoundingClientRect();
-    const reactRootFillsViewport =
-      rootRect.height >= Math.min(window.innerHeight * 0.5, 320);
-
-    return hasMuiShell || reactRootFillsViewport;
   },
 
   syncLayoutClass(container) {
+    const isV12Shell = this.isJellyfinV12Shell();
     const isV12Layout = this.isJellyfinV12Layout();
 
     [document.documentElement, document.body].forEach((element) => {
       if (element) {
+        element.classList.toggle(this.V12_SHELL_CLASS, isV12Shell);
         element.classList.toggle(this.V12_LAYOUT_CLASS, isV12Layout);
       }
     });
 
     if (container) {
+      container.dataset.jellyfinShell = isV12Shell ? "v12" : "legacy";
       container.dataset.jellyfinLayout = isV12Layout ? "v12" : "legacy";
     }
 
@@ -1111,6 +1130,8 @@ const VisibilityObserver = {
     const container = document.getElementById("slides-container");
 
     if (!container) return;
+
+    LayoutUtils.syncLayoutClass(container);
 
     const isVisible =
       (window.location.hash === "#/home.html" ||

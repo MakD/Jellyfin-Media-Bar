@@ -8,7 +8,7 @@
 
 The fullscreen version has a new look (in beta), and support for different screen sizes has been added. For any visual goof-ups, please open a bug report, including the device being used and whether it is encountered in portrait or landscape mode.
 
-Jellyfin 12 uses a new React/MUI app shell. Use the `v12` branch for Jellyfin 12 so the media bar is pinned to the new viewport shell and the Home rows are spaced below the hero controls instead of colliding with them.
+Jellyfin 12 can render either the legacy Desktop layout or the newer React/MUI layout. Use the `v12` branch for Jellyfin 12: legacy Desktop mode keeps the original MediaBar visual treatment with only the required Jellyfin 12 shell placement fix, while Auto/modern mode activates the separate `slideshowpure-v12.css` support layer for a more immersive edge-to-edge render on the official Jellyfin 12 shell.
 
 
 Thanks to the Man, the Legend [BobHasNoSoul](https://github.com/BobHasNoSoul) for his work on the [jellyfinfeatured](https://github.com/BobHasNoSoul/jellyfin-featured) and [SethBacon](https://forum.jellyfin.org/u-sethbacon) and [TedHinklater](https://github.com/tedhinklater) for their take on the [Jellyfin-Featured-Content-Bar](https://github.com/tedhinklater/Jellyfin-Featured-Content-Bar). 
@@ -51,8 +51,15 @@ For Jellyfin 12, use the dedicated branch:
 
 ```
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@v12/slideshowpure.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@v12/slideshowpure-v12.css" />
     <script async src="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@v12/slideshowpure.js"></script>
 ```
+
+The v12 support layer is scoped behind a runtime layout check. If Jellyfin is set
+to Desktop/legacy mode, the original `slideshowpure.css` visuals are preserved
+with only the Jellyfin 12 shell placement fix applied. If Jellyfin is set to
+Auto/modern mode, the script adds the modern layout class and the v12 support
+layer takes over.
 </details>
 
 And that is it. Hard refresh your web page (CTRL+Shift+R) twice, and Profit!

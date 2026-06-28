@@ -51,6 +51,7 @@ const STATE = {
     isLoading: false,
     players: {},
     ytPromise: null,
+    skipSegmentCache: {},
     isMuted: true,
     isVideoPlaying: false,
   },
@@ -462,6 +463,160 @@ const LayoutUtils = {
   },
 };
 
+const HashUtils = {
+  async sha256Hex(value) {
+    if (window.crypto?.subtle && window.TextEncoder) {
+      const data = new TextEncoder().encode(value);
+      const hash = await window.crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(hash))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+    }
+
+    return this.sha256HexFallback(value);
+  },
+
+  sha256HexFallback(value) {
+    const ascii = unescape(encodeURIComponent(value));
+    const mathPow = Math.pow;
+    const maxWord = mathPow(2, 32);
+    const rightRotate = (word, amount) =>
+      (word >>> amount) | (word << (32 - amount));
+    const words = [];
+    const asciiBitLength = ascii.length * 8;
+    let result = "";
+    let hash = [];
+    const k = [];
+    const isComposite = {};
+    let primeCounter = 0;
+
+    for (let candidate = 2; primeCounter < 64; candidate += 1) {
+      if (!isComposite[candidate]) {
+        for (let i = 0; i < 313; i += candidate) {
+          isComposite[i] = candidate;
+        }
+        hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+        k[primeCounter] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+        primeCounter += 1;
+      }
+    }
+
+    let message = `${ascii}\x80`;
+    while (message.length % 64 - 56) {
+      message += "\x00";
+    }
+
+    for (let i = 0; i < message.length; i += 1) {
+      words[i >> 2] |= message.charCodeAt(i) << (((3 - i) % 4) * 8);
+    }
+    words[words.length] = (asciiBitLength / maxWord) | 0;
+    words[words.length] = asciiBitLength;
+
+    for (let j = 0; j < words.length; ) {
+      const w = words.slice(j, (j += 16));
+      const oldHash = hash;
+      hash = hash.slice(0, 8);
+
+      for (let i = 0; i < 64; i += 1) {
+        const w15 = w[i - 15];
+        const w2 = w[i - 2];
+        const a = hash[0];
+        const e = hash[4];
+        const temp1 =
+          hash[7] +
+          (rightRotate(e, 6) ^ rightRotate(e, 11) ^ rightRotate(e, 25)) +
+          ((e & hash[5]) ^ (~e & hash[6])) +
+          k[i] +
+          (w[i] =
+            i < 16
+              ? w[i]
+              : (w[i - 16] +
+                  (rightRotate(w15, 7) ^ rightRotate(w15, 18) ^ (w15 >>> 3)) +
+                  w[i - 7] +
+                  (rightRotate(w2, 17) ^ rightRotate(w2, 19) ^ (w2 >>> 10))) |
+                0);
+        const temp2 =
+          (rightRotate(a, 2) ^ rightRotate(a, 13) ^ rightRotate(a, 22)) +
+          ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+
+        hash = [(temp1 + temp2) | 0].concat(hash);
+        hash[4] = (hash[4] + temp1) | 0;
+      }
+
+      for (let i = 0; i < 8; i += 1) {
+        hash[i] = (hash[i] + oldHash[i]) | 0;
+      }
+    }
+
+    for (let i = 0; i < 8; i += 1) {
+      for (let j = 3; j + 1; j -= 1) {
+        const byte = (hash[i] >> (j * 8)) & 255;
+        result += (byte < 16 ? "0" : "") + byte.toString(16);
+      }
+    }
+
+    return result;
+  },
+};
+
+const PlayerUtils = {
+  getIframe(player) {
+    try {
+      if (player && typeof player.getIframe === "function") {
+        return player.getIframe();
+      }
+    } catch (error) {}
+    return null;
+  },
+
+  isPlayable(player) {
+    const iframe = this.getIframe(player);
+    if (!iframe || !iframe.isConnected || !iframe.contentWindow) return false;
+
+    try {
+      const src = iframe.getAttribute("src") || iframe.src || "";
+      return /https:\/\/www\.youtube(?:-nocookie)?\.com\/embed\//.test(src);
+    } catch (error) {
+      return false;
+    }
+  },
+
+  call(player, method, ...args) {
+    if (!player || typeof player[method] !== "function") return false;
+    if (method !== "destroy" && !this.isPlayable(player)) return false;
+
+    try {
+      player[method](...args);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  destroy(player) {
+    if (!player || typeof player.destroy !== "function") return false;
+
+    try {
+      player.destroy();
+      return true;
+    } catch (error) {
+      return false;
+    }
+  },
+
+  applyMuteState(player) {
+    if (!this.isPlayable(player)) return false;
+
+    if (STATE.slideshow.isMuted) {
+      return this.call(player, "mute");
+    }
+
+    const unmuted = this.call(player, "unMute");
+    this.call(player, "setVolume", 50);
+    return unmuted;
+  },
+};
+
 /**
  * Utility functions for slide creation and management
  */
@@ -863,25 +1018,47 @@ const ApiUtils = {
    */
 
   async getSkipSegments(videoId) {
+    if (!videoId) return 0;
+    if (
+      Object.prototype.hasOwnProperty.call(
+        STATE.slideshow.skipSegmentCache,
+        videoId,
+      )
+    ) {
+      return STATE.slideshow.skipSegmentCache[videoId];
+    }
+
     try {
       const categories = '["intro","sponsor","selfpromo","interaction"]';
+      const hashPrefix = (await HashUtils.sha256Hex(videoId)).slice(0, 4);
       const response = await fetch(
-        `https://sponsor.ajay.app/api/skipSegments?videoID=${videoId}&categories=${categories}`,
+        `https://sponsor.ajay.app/api/skipSegments/${hashPrefix}?categories=${encodeURIComponent(
+          categories,
+        )}`,
       );
 
       if (response.status === 200) {
-        const segments = await response.json();
+        const bucket = await response.json();
+        const videoSegments = Array.isArray(bucket)
+          ? bucket.find((entry) => entry.videoID === videoId)?.segments || []
+          : [];
+        const segments = Array.isArray(videoSegments) ? videoSegments : [];
         const introSegment = segments.find((s) => s.segment[0] < 5);
 
         if (introSegment) {
           console.log(
             `[SponsorBlock] Skipping intro for ${videoId}. Start at: ${introSegment.segment[1]}`,
           );
-          return Math.ceil(introSegment.segment[1]);
+          STATE.slideshow.skipSegmentCache[videoId] = Math.ceil(
+            introSegment.segment[1],
+          );
+          return STATE.slideshow.skipSegmentCache[videoId];
         }
       }
+      STATE.slideshow.skipSegmentCache[videoId] = 0;
       return 0;
     } catch (error) {
+      STATE.slideshow.skipSegmentCache[videoId] = 0;
       return 0;
     }
   },
@@ -1148,11 +1325,7 @@ const VisibilityObserver = {
       }
       Object.keys(STATE.slideshow.players).forEach((itemId) => {
         const player = STATE.slideshow.players[itemId];
-        if (player && typeof player.destroy === "function") {
-          try {
-            player.destroy();
-          } catch (e) {}
-        }
+        PlayerUtils.destroy(player);
       });
       STATE.slideshow.players = {};
       container.querySelectorAll(".slide").forEach((slide) => slide.remove());
@@ -1614,7 +1787,7 @@ const SlideCreator = {
                     itemId,
                     trailerContainer,
                   ),
-                onReady: (e) => e.target.mute(),
+                onReady: (e) => PlayerUtils.call(e.target, "mute"),
               },
             },
           );
@@ -1693,14 +1866,7 @@ const SlideshowManager = {
       STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
     const player = STATE.slideshow.players[currentId];
 
-    if (player && typeof player.setVolume === "function") {
-      if (STATE.slideshow.isMuted) {
-        player.mute();
-      } else {
-        player.unMute();
-        player.setVolume(50);
-      }
-    }
+    PlayerUtils.applyMuteState(player);
   },
 
   /**
@@ -1717,16 +1883,8 @@ const SlideshowManager = {
       STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
     if (prevItemId && STATE.slideshow.players[prevItemId]) {
       try {
-        if (
-          typeof STATE.slideshow.players[prevItemId].pauseVideo === "function"
-        ) {
-          STATE.slideshow.players[prevItemId].pauseVideo();
-          if (
-            typeof STATE.slideshow.players[prevItemId].seekTo === "function"
-          ) {
-            STATE.slideshow.players[prevItemId].seekTo(0);
-          }
-        }
+        PlayerUtils.call(STATE.slideshow.players[prevItemId], "pauseVideo");
+        PlayerUtils.call(STATE.slideshow.players[prevItemId], "seekTo", 0);
         STATE.slideshow.isVideoPlaying = false;
 
         const prevSlide = document.querySelector(
@@ -1787,15 +1945,11 @@ const SlideshowManager = {
 
           if (player && typeof player.playVideo === "function") {
             try {
-              if (STATE.slideshow.isMuted) {
-                player.mute();
-              } else {
-                player.unMute();
-                player.setVolume(50);
+              PlayerUtils.applyMuteState(player);
+              PlayerUtils.call(player, "seekTo", startTime);
+              if (!PlayerUtils.call(player, "playVideo")) {
+                fallbackToTimer();
               }
-
-              player.seekTo(0);
-              player.playVideo();
             } catch (e) {
               fallbackToTimer();
             }
@@ -1823,7 +1977,6 @@ const SlideshowManager = {
     }, CONFIG.fadeTransitionDuration);
     setTimeout(() => {
       if (STATE.slideshow.isTransitioning) {
-        console.warn("Forcing transition unlock");
         STATE.slideshow.isTransitioning = false;
       }
     }, 2000);
@@ -1903,9 +2056,7 @@ const SlideshowManager = {
       if (distance > keepRange) {
         if (STATE.slideshow.players[itemId]) {
           try {
-            if (typeof STATE.slideshow.players[itemId].destroy === "function") {
-              STATE.slideshow.players[itemId].destroy();
-            }
+            PlayerUtils.destroy(STATE.slideshow.players[itemId]);
           } catch (e) {
             console.warn("Error destroying player:", e);
           }
@@ -1921,7 +2072,6 @@ const SlideshowManager = {
 
         delete STATE.slideshow.createdSlides[itemId];
 
-        console.log(`Pruned slide ${itemId} at distance ${distance} from view`);
       }
     });
   },
@@ -1941,9 +2091,7 @@ const SlideshowManager = {
       const playLabel = LocalizationUtils.getLocalizedString("Play", "Play");
       pauseButton.setAttribute("aria-label", playLabel);
       pauseButton.setAttribute("title", playLabel);
-      if (player && typeof player.pauseVideo === "function") {
-        player.pauseVideo();
-      }
+      PlayerUtils.call(player, "pauseVideo");
     } else {
       if (STATE.slideshow.slideInterval) STATE.slideshow.slideInterval.start();
       pauseButton.innerHTML = '<i class="material-icons">pause</i>';
@@ -1954,9 +2102,7 @@ const SlideshowManager = {
       pauseButton.setAttribute("aria-label", pauseLabel);
       pauseButton.setAttribute("title", pauseLabel);
 
-      if (player && typeof player.playVideo === "function") {
-        player.playVideo();
-      }
+      PlayerUtils.call(player, "playVideo");
     }
   },
 
@@ -2347,7 +2493,6 @@ const initPageVisibilityHandler = () => {
 
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) {
-      console.log("Tab inactive - pausing slideshow and videos");
       wasVideoPlayingBeforeHide = STATE.slideshow.isVideoPlaying;
       if (STATE.slideshow.slideInterval) {
         STATE.slideshow.slideInterval.stop();
@@ -2358,7 +2503,7 @@ const initPageVisibilityHandler = () => {
         const player = STATE.slideshow.players[currentItemId];
         if (typeof player.pauseVideo === "function") {
           try {
-            player.pauseVideo();
+            PlayerUtils.call(player, "pauseVideo");
             STATE.slideshow.isVideoPlaying = false;
           } catch (e) {
             console.warn("Error pausing video on tab hide:", e);
@@ -2366,7 +2511,6 @@ const initPageVisibilityHandler = () => {
         }
       }
     } else {
-      console.log("Tab active - resuming slideshow");
       if (!STATE.slideshow.isPaused && VisibilityObserver.wasVisible) {
         const currentItemId =
           STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
@@ -2378,8 +2522,16 @@ const initPageVisibilityHandler = () => {
           const player = STATE.slideshow.players[currentItemId];
           if (typeof player.playVideo === "function") {
             try {
-              player.playVideo();
-              STATE.slideshow.isVideoPlaying = true;
+              STATE.slideshow.isVideoPlaying = PlayerUtils.call(
+                player,
+                "playVideo",
+              );
+              if (
+                !STATE.slideshow.isVideoPlaying &&
+                STATE.slideshow.slideInterval
+              ) {
+                STATE.slideshow.slideInterval.start();
+              }
             } catch (e) {
               console.warn("Error resuming video on tab show:", e);
               if (STATE.slideshow.slideInterval) {

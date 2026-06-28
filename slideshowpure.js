@@ -667,6 +667,121 @@ const PlayerUtils = {
   },
 };
 
+const TrailerUtils = {
+  getTrailerUrl(trailer) {
+    if (!trailer) return "";
+    return typeof trailer === "string" ? trailer : trailer.Url || trailer.url || "";
+  },
+
+  getTrailerName(trailer) {
+    if (!trailer || typeof trailer === "string") return "";
+    return trailer.Name || trailer.name || "";
+  },
+
+  normalizeText(value) {
+    return `${value || ""}`.toLowerCase().replace(/[’‘]/g, "'");
+  },
+
+  sanitizeVideoId(videoId) {
+    const match = `${videoId || ""}`.match(/^[a-zA-Z0-9_-]{11}$/);
+    return match ? match[0] : null;
+  },
+
+  parseYouTubeVideoId(trailer) {
+    const rawUrl = this.getTrailerUrl(trailer);
+    if (!rawUrl) return null;
+
+    try {
+      const baseUrl =
+        typeof window !== "undefined" && window.location?.origin
+          ? window.location.origin
+          : "https://www.youtube.com";
+      const url = new URL(rawUrl, baseUrl);
+      const host = url.hostname.toLowerCase().replace(/^www\./, "");
+      const segments = url.pathname.split("/").filter(Boolean);
+
+      if (host === "youtu.be") {
+        return this.sanitizeVideoId(segments[0]);
+      }
+
+      if (
+        host === "youtube.com" ||
+        host === "m.youtube.com" ||
+        host === "music.youtube.com" ||
+        host === "youtube-nocookie.com"
+      ) {
+        if (segments[0] === "shorts") return null;
+        if (["embed", "v", "live"].includes(segments[0])) {
+          return this.sanitizeVideoId(segments[1]);
+        }
+        return this.sanitizeVideoId(url.searchParams.get("v"));
+      }
+    } catch (error) {}
+
+    const fallbackMatch = rawUrl.match(
+      /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?.*?[?&]?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/,
+    );
+    return fallbackMatch ? fallbackMatch[1] : null;
+  },
+
+  scoreTrailer(trailer, index) {
+    const videoId = this.parseYouTubeVideoId(trailer);
+    if (!videoId) return null;
+
+    const name = this.getTrailerName(trailer);
+    const url = this.getTrailerUrl(trailer);
+    const text = this.normalizeText(`${name} ${url}`);
+
+    // These are almost always portrait/mobile-first promos, not cinematic trailers.
+    if (/\b(vertical|portrait)\b/.test(text) || /\/shorts\//i.test(url)) {
+      return null;
+    }
+
+    let score = 100 - index * 0.5;
+
+    if (/\bofficial\b/.test(text)) score += 45;
+    if (/\bofficial\s+(?:movie\s+)?trailer\b/.test(text)) score += 120;
+    else if (/\btrailer\b/.test(text)) score += 80;
+    if (/\bteaser\b/.test(text)) score += 45;
+
+    if (/\b(clip|scene|promo|featurette|behind the scenes|tv spot)\b/.test(text)) {
+      score -= 55;
+    }
+    if (/\b(now playing|watch now|watch today|at home|on digital|rent|own)\b/.test(text)) {
+      score -= 35;
+    }
+    if (/\b(tomorrow|tickets?|in theaters? tomorrow|opening)\b/.test(text)) {
+      score -= 30;
+    }
+    if (/\btop\s+\d+\b|\bthings?\s+(?:not\s+)?to\s+do\b/.test(text)) {
+      score -= 70;
+    }
+    if (/#shorts?\b|\btiktok\b|\breel\b/.test(text)) {
+      score -= 100;
+    }
+    if (!/\b(trailer|teaser)\b/.test(text)) {
+      score -= 20;
+    }
+
+    return { videoId, trailer, score, index };
+  },
+
+  pickBestTrailer(remoteTrailers) {
+    if (!Array.isArray(remoteTrailers) || remoteTrailers.length === 0) {
+      return null;
+    }
+
+    const candidates = remoteTrailers
+      .map((trailer, index) => this.scoreTrailer(trailer, index))
+      .filter(Boolean);
+
+    if (candidates.length === 0) return null;
+
+    candidates.sort((a, b) => b.score - a.score || a.index - b.index);
+    return candidates[0];
+  },
+};
+
 /**
  * Utility functions for slide creation and management
  */
@@ -1544,15 +1659,17 @@ const SlideCreator = {
       item.RemoteTrailers &&
       item.RemoteTrailers.length > 0
     ) {
-      try {
-        const urlObj = new URL(item.RemoteTrailers[0].Url);
-        videoId = urlObj.searchParams.get("v");
-      } catch (e) {}
+      const selectedTrailer = TrailerUtils.pickBestTrailer(item.RemoteTrailers);
+      videoId = selectedTrailer?.videoId || null;
 
       if (videoId) {
         trailerContainer = SlideUtils.createElement("div", {
           className: "video-container",
           id: `trailer-${item.Id}`,
+          "data-trailer-video-id": videoId,
+          "data-trailer-name": TrailerUtils.getTrailerName(
+            selectedTrailer.trailer,
+          ),
         });
 
         const playerDiv = SlideUtils.createElement("div", {
@@ -2169,12 +2286,8 @@ const SlideshowManager = {
     this.preloadAdjacentSlides(index);
     this.pruneSlideCache();
 
-    const itemData = STATE.slideshow.loadedItems[currentItemId];
     const hasTrailerData =
-      CONFIG.enableTrailers &&
-      itemData &&
-      itemData.RemoteTrailers &&
-      itemData.RemoteTrailers.length > 0;
+      CONFIG.enableTrailers && currentSlide.querySelector(".video-container");
 
     if (hasTrailerData) {
       setTimeout(async () => {

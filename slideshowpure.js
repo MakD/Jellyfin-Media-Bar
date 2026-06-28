@@ -22,7 +22,9 @@ const CONFIG = {
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
-  enableSponsorBlock: false,
+  enableSponsorBlock: true,
+  sponsorBlockTimeoutMs: 5000,
+  sponsorBlockFailureCooldownMs: 300000,
   layoutMode: "auto",
   imageSizing: {
     backdropMaxWidth: 2560,
@@ -33,7 +35,7 @@ const CONFIG = {
   trailerPlayerReadyTimeoutMs: 8000,
   itemList: {
     path: "/web/avatars/list.txt",
-    maxItems: 5,
+    maxItems: 30,
   },
 };
 
@@ -64,6 +66,7 @@ const STATE = {
     players: {},
     ytPromise: null,
     skipSegmentCache: {},
+    sponsorBlockDisabledUntil: 0,
     trailerStartTimes: {},
     isMuted: true,
     isVideoPlaying: false,
@@ -1074,14 +1077,35 @@ const ApiUtils = {
       return 0;
     }
 
+    if (Date.now() < STATE.slideshow.sponsorBlockDisabledUntil) {
+      return 0;
+    }
+
+    let timeoutId = null;
     try {
       const categories = '["intro","sponsor","selfpromo","interaction"]';
       const hashPrefix = (await HashUtils.sha256Hex(videoId)).slice(0, 4);
+      const controller =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
+      if (controller) {
+        timeoutId = setTimeout(
+          () => controller.abort(),
+          CONFIG.sponsorBlockTimeoutMs,
+        );
+      }
+
       const response = await fetch(
         `https://sponsor.ajay.app/api/skipSegments/${hashPrefix}?categories=${encodeURIComponent(
           categories,
         )}`,
+        {
+          headers: {
+            "x-client-name": "Jellyfin-Media-Bar",
+          },
+          signal: controller?.signal,
+        },
       );
+      if (timeoutId) clearTimeout(timeoutId);
 
       if (response.status === 200) {
         const bucket = await response.json();
@@ -1101,9 +1125,16 @@ const ApiUtils = {
           return STATE.slideshow.skipSegmentCache[videoId];
         }
       }
+      if (response.status >= 500) {
+        STATE.slideshow.sponsorBlockDisabledUntil =
+          Date.now() + CONFIG.sponsorBlockFailureCooldownMs;
+      }
       STATE.slideshow.skipSegmentCache[videoId] = 0;
       return 0;
     } catch (error) {
+      if (timeoutId) clearTimeout(timeoutId);
+      STATE.slideshow.sponsorBlockDisabledUntil =
+        Date.now() + CONFIG.sponsorBlockFailureCooldownMs;
       STATE.slideshow.skipSegmentCache[videoId] = 0;
       return 0;
     }

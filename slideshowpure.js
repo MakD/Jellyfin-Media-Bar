@@ -27,6 +27,10 @@ const CONFIG = {
     backdropMaxWidth: 2560,
     logoMaxWidth: 1400,
   },
+  itemList: {
+    path: "/web/avatars/list.txt",
+    maxItems: 5,
+  },
 };
 
 // State management
@@ -1067,26 +1071,47 @@ const ApiUtils = {
     }
   },
 
+  parseItemIdFromListLine(line) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine || trimmedLine.startsWith("#")) return null;
+
+    const detailsUrlMatch = trimmedLine.match(/(?:[?&#]|^)id=([a-f0-9]{32})/i);
+    if (detailsUrlMatch) return detailsUrlMatch[1];
+
+    const match = trimmedLine.match(/[a-f0-9]{32}/i);
+    return match ? match[0] : null;
+  },
+
   /**
    * Fetch item IDs from the list file
    * @returns {Promise<Array>} Array of item IDs
    */
   async fetchItemIdsFromList() {
     try {
-      const listFileName = `${STATE.jellyfinData.serverAddress}/web/avatars/list.txt?userId=${STATE.jellyfinData.userId}`;
-      const response = await fetch(listFileName);
+      const configuredPath = CONFIG.itemList?.path || "/web/avatars/list.txt";
+      const listUrl = new URL(configuredPath, STATE.jellyfinData.serverAddress);
+      listUrl.searchParams.set("userId", STATE.jellyfinData.userId || "");
+
+      const response = await fetch(listUrl.toString());
 
       if (!response.ok) {
         console.warn("list.txt not found or inaccessible. Using random items.");
         return [];
       }
 
+      const maxItems = Math.max(1, CONFIG.itemList?.maxItems || 5);
+      const seen = new Set();
       const text = await response.text();
       return text
         .split("\n")
-        .map((id) => id.trim())
+        .map((line) => this.parseItemIdFromListLine(line))
         .filter((id) => id)
-        .slice(1);
+        .filter((id) => {
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        })
+        .slice(0, maxItems);
     } catch (error) {
       console.error("Error fetching list.txt:", error);
       return [];
@@ -2279,12 +2304,15 @@ const SlideshowManager = {
       STATE.slideshow.isLoading = true;
 
       let itemIds = await ApiUtils.fetchItemIdsFromList();
+      const hasPinnedItemList = itemIds.length > 0;
 
-      if (itemIds.length === 0) {
+      if (!hasPinnedItemList) {
         itemIds = await ApiUtils.fetchItemIdsFromServer();
       }
 
-      itemIds = SlideUtils.shuffleArray(itemIds);
+      if (!hasPinnedItemList) {
+        itemIds = SlideUtils.shuffleArray(itemIds);
+      }
 
       STATE.slideshow.itemIds = itemIds;
       STATE.slideshow.totalItems = itemIds.length;

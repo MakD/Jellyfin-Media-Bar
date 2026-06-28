@@ -904,8 +904,11 @@
    layout is selected. Keep the original MediaBar in the viewport without
    enabling the modern v12 visual treatment. */
 .jellyfin-v12-shell #slides-container {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
   width: 100vw;
   height: 100vh;
   margin: 0;

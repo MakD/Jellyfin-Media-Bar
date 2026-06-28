@@ -12,8 +12,11 @@
 }
 
 .jellyfin-v12-layout #slides-container {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
   width: 100vw;
   height: 100vh;
   margin: 0;
@@ -102,24 +105,24 @@
 .jellyfin-v12-layout #slides-container .gradient-overlay {
   z-index: 4;
   background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.72) 0%, rgb(0 0 0 / 0.45) 28%, rgb(0 0 0 / 0.2) 58%, rgb(0 0 0 / 0) 100%),
-    linear-gradient(180deg, rgb(0 0 0 / 0.5) 0%, rgb(0 0 0 / 0.12) 24%, rgb(0 0 0 / 0) 42%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.9) 0%, rgb(0 0 0 / 0.56) 18%, rgb(0 0 0 / 0) 50%);
+    linear-gradient(90deg, rgb(0 0 0 / 0.56) 0%, rgb(0 0 0 / 0.34) 28%, rgb(0 0 0 / 0.14) 58%, rgb(0 0 0 / 0) 100%),
+    linear-gradient(180deg, rgb(0 0 0 / 0.36) 0%, rgb(0 0 0 / 0.08) 24%, rgb(0 0 0 / 0) 42%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.74) 0%, rgb(0 0 0 / 0.36) 18%, rgb(0 0 0 / 0) 50%);
 }
 
 .jellyfin-v12-layout #slides-container .backdrop-overlay {
-  background: rgb(0 0 0 / 0.16);
+  background: rgb(0 0 0 / 0.08);
 }
 
 .jellyfin-v12-layout #slides-container .slide:has(.video-container.active) .gradient-overlay {
   background:
-    linear-gradient(90deg, rgb(0 0 0 / 0.76) 0%, rgb(0 0 0 / 0.52) 24%, rgb(0 0 0 / 0.32) 34%, rgb(0 0 0 / 0.12) 48%, rgb(0 0 0 / 0) 70%),
-    linear-gradient(180deg, rgb(0 0 0 / 0.48) 0%, rgb(0 0 0 / 0.1) 24%, rgb(0 0 0 / 0) 42%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.9) 0%, rgb(0 0 0 / 0.58) 18%, rgb(0 0 0 / 0) 52%);
+    linear-gradient(90deg, rgb(0 0 0 / 0.62) 0%, rgb(0 0 0 / 0.42) 24%, rgb(0 0 0 / 0.24) 34%, rgb(0 0 0 / 0.08) 48%, rgb(0 0 0 / 0) 70%),
+    linear-gradient(180deg, rgb(0 0 0 / 0.34) 0%, rgb(0 0 0 / 0.07) 24%, rgb(0 0 0 / 0) 42%),
+    linear-gradient(0deg, rgb(0 0 0 / 0.76) 0%, rgb(0 0 0 / 0.38) 18%, rgb(0 0 0 / 0) 52%);
 }
 
 .jellyfin-v12-layout #slides-container .slide:has(.video-container.active) .backdrop-overlay {
-  background: rgb(0 0 0 / 0.08);
+  background: rgb(0 0 0 / 0.04);
 }
 
 @keyframes mb-v12-poster-yield-to-trailer {

@@ -27,6 +27,9 @@ const CONFIG = {
     backdropMaxWidth: 2560,
     logoMaxWidth: 1400,
   },
+  artworkLoadTimeoutMs: 12000,
+  initialArtworkLoadTimeoutMs: 2500,
+  trailerPlayerReadyTimeoutMs: 8000,
   itemList: {
     path: "/web/avatars/list.txt",
     maxItems: 5,
@@ -624,6 +627,33 @@ const PlayerUtils = {
     const unmuted = this.call(player, "unMute");
     this.call(player, "setVolume", 50);
     return unmuted;
+  },
+
+  waitForPlayable(itemId, timeoutMs = CONFIG.trailerPlayerReadyTimeoutMs) {
+    return new Promise((resolve) => {
+      const startedAt = Date.now();
+
+      const checkPlayer = () => {
+        const player = STATE.slideshow.players[itemId];
+        if (
+          player &&
+          typeof player.playVideo === "function" &&
+          this.isPlayable(player)
+        ) {
+          resolve(player);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          resolve(null);
+          return;
+        }
+
+        setTimeout(checkPlayer, 100);
+      };
+
+      checkPlayer();
+    });
   },
 };
 
@@ -1782,6 +1812,84 @@ const SlideCreator = {
     });
   },
 
+  waitForImageReady(image, timeoutMs = CONFIG.artworkLoadTimeoutMs) {
+    if (!image) return Promise.resolve(true);
+
+    image.loading = "eager";
+    image.decoding = "async";
+    image.fetchPriority = "high";
+
+    if (image.complete && image.naturalWidth > 0) {
+      if (typeof image.decode === "function") {
+        return image
+          .decode()
+          .then(() => true)
+          .catch(() => true);
+      }
+      return Promise.resolve(true);
+    }
+
+    if (image.complete && image.naturalWidth === 0) {
+      return Promise.resolve(false);
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+
+      const finish = async (isReady) => {
+        if (settled) return;
+        settled = true;
+        image.removeEventListener("load", onLoad);
+        image.removeEventListener("error", onError);
+        clearTimeout(timer);
+
+        if (isReady && typeof image.decode === "function") {
+          try {
+            await image.decode();
+          } catch (error) {}
+        }
+
+        resolve(isReady);
+      };
+
+      const onLoad = () => finish(image.naturalWidth > 0);
+      const onError = () => finish(false);
+      const timer = setTimeout(() => finish(false), timeoutMs);
+
+      image.addEventListener("load", onLoad, { once: true });
+      image.addEventListener("error", onError, { once: true });
+    });
+  },
+
+  async waitForSlideArtwork(
+    slide,
+    timeoutMs = CONFIG.artworkLoadTimeoutMs,
+    warnOnTimeout = true,
+  ) {
+    if (!slide) return false;
+
+    const artworkImages = [
+      slide.querySelector(".backdrop"),
+      slide.querySelector(".logo"),
+    ].filter(Boolean);
+
+    if (artworkImages.length === 0) return true;
+
+    const results = await Promise.all(
+      artworkImages.map((image) => this.waitForImageReady(image, timeoutMs)),
+    );
+    const allReady = results.every(Boolean);
+
+    if (!allReady && warnOnTimeout) {
+      console.warn(
+        "Timed out waiting for slide artwork; continuing transition.",
+        slide.dataset.itemId,
+      );
+    }
+
+    return allReady;
+  },
+
   initializeTrailerPlayer(itemId, videoId, trailerContainer) {
     if (!videoId) return;
 
@@ -1960,6 +2068,7 @@ const SlideshowManager = {
 
     STATE.slideshow.isTransitioning = true;
     const container = SlideUtils.getOrCreateSlidesContainer();
+    const prevVisible = container.querySelector(".slide.active");
     index = Math.max(0, Math.min(index, STATE.slideshow.totalItems - 1));
     const currentItemId = STATE.slideshow.itemIds[index];
 
@@ -1974,7 +2083,18 @@ const SlideshowManager = {
       return;
     }
 
-    const prevVisible = container.querySelector(".slide.active");
+    currentSlide
+      .querySelectorAll("img")
+      .forEach((image) => (image.fetchPriority = "high"));
+    const artworkTimeout = prevVisible
+      ? CONFIG.artworkLoadTimeoutMs
+      : CONFIG.initialArtworkLoadTimeoutMs;
+    await SlideCreator.waitForSlideArtwork(
+      currentSlide,
+      artworkTimeout,
+      Boolean(prevVisible),
+    );
+
     if (prevVisible) {
       prevVisible.classList.remove("active");
       prevVisible
@@ -1996,9 +2116,6 @@ const SlideshowManager = {
       });
 
     currentSlide.classList.add("active");
-    currentSlide
-      .querySelectorAll("img")
-      .forEach((image) => (image.fetchPriority = "high"));
     if (CONFIG.slideAnimationEnabled) {
       currentSlide.querySelector(".backdrop")?.classList.add("animate");
       currentSlide.querySelector(".logo")?.classList.add("animate");
@@ -2017,13 +2134,31 @@ const SlideshowManager = {
       itemData.RemoteTrailers.length > 0;
 
     if (hasTrailerData) {
-      setTimeout(() => {
+      setTimeout(async () => {
         if (
           STATE.slideshow.currentSlideIndex === index &&
           !STATE.slideshow.isPaused &&
           VisibilityObserver.wasVisible
         ) {
-          const player = STATE.slideshow.players[currentItemId];
+          const artworkReady = await SlideCreator.waitForSlideArtwork(
+            currentSlide,
+            CONFIG.artworkLoadTimeoutMs,
+            false,
+          );
+          if (!artworkReady) {
+            fallbackToTimer();
+            return;
+          }
+
+          const player = await PlayerUtils.waitForPlayable(currentItemId);
+          if (
+            STATE.slideshow.currentSlideIndex !== index ||
+            STATE.slideshow.isPaused ||
+            !VisibilityObserver.wasVisible ||
+            !currentSlide.classList.contains("active")
+          ) {
+            return;
+          }
 
           if (player && typeof player.playVideo === "function") {
             try {

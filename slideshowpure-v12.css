@@ -9,6 +9,14 @@
 .jellyfin-v12-layout {
   --mb-v12-content-left: clamp(3rem, 5vw, 5.5rem);
   --mb-v12-home-row-top: clamp(35.5rem, calc(50vh + 14.5rem), 50rem);
+  --mb-v12-bottom-fade-mask: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 62%,
+    rgb(0 0 0 / 0.82) 76%,
+    rgb(0 0 0 / 0.38) 90%,
+    transparent 100%
+  );
 }
 
 .jellyfin-v12-layout #slides-container {
@@ -22,7 +30,7 @@
   margin: 0;
   overflow: hidden;
   isolation: isolate;
-  background: #000;
+  background: transparent;
   border-radius: 0;
   box-shadow: none;
   z-index: 1;
@@ -52,10 +60,12 @@
   z-index: 1;
   -webkit-mask-image:
     linear-gradient(to right, transparent 0%, transparent 18%, rgb(0 0 0 / 0.35) 26%, rgb(0 0 0 / 0.82) 34%, #000 42%),
-    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.78) 12%, #000 26%);
+    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.78) 12%, #000 26%),
+    var(--mb-v12-bottom-fade-mask);
   mask-image:
     linear-gradient(to right, transparent 0%, transparent 18%, rgb(0 0 0 / 0.35) 26%, rgb(0 0 0 / 0.82) 34%, #000 42%),
-    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.78) 12%, #000 26%);
+    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.78) 12%, #000 26%),
+    var(--mb-v12-bottom-fade-mask);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
 }
@@ -63,8 +73,8 @@
 .jellyfin-v12-layout #slides-container .backdrop-container,
 .jellyfin-v12-layout #slides-container .backdrop-overlay,
 .jellyfin-v12-layout #slides-container .gradient-overlay {
-  -webkit-mask-image: none;
-  mask-image: none;
+  -webkit-mask-image: var(--mb-v12-bottom-fade-mask);
+  mask-image: var(--mb-v12-bottom-fade-mask);
 }
 
 .jellyfin-v12-layout #slides-container .backdrop {
@@ -94,10 +104,12 @@
   z-index: 2;
   -webkit-mask-image:
     linear-gradient(to right, #000 0%, #000 24%, rgb(0 0 0 / 0.72) 31%, rgb(0 0 0 / 0.18) 37%, transparent 42%),
-    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.7) 10%, #000 22%);
+    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.7) 10%, #000 22%),
+    var(--mb-v12-bottom-fade-mask);
   mask-image:
     linear-gradient(to right, #000 0%, #000 24%, rgb(0 0 0 / 0.72) 31%, rgb(0 0 0 / 0.18) 37%, transparent 42%),
-    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.7) 10%, #000 22%);
+    linear-gradient(to top, transparent 0%, rgb(0 0 0 / 0.7) 10%, #000 22%),
+    var(--mb-v12-bottom-fade-mask);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
 }
@@ -107,7 +119,7 @@
   background:
     linear-gradient(90deg, rgb(0 0 0 / 0.56) 0%, rgb(0 0 0 / 0.34) 28%, rgb(0 0 0 / 0.14) 58%, rgb(0 0 0 / 0) 100%),
     linear-gradient(180deg, rgb(0 0 0 / 0.36) 0%, rgb(0 0 0 / 0.08) 24%, rgb(0 0 0 / 0) 42%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.74) 0%, rgb(0 0 0 / 0.36) 18%, rgb(0 0 0 / 0) 50%);
+    linear-gradient(0deg, rgb(0 0 0 / 0.54) 0%, rgb(0 0 0 / 0.22) 18%, rgb(0 0 0 / 0) 50%);
 }
 
 .jellyfin-v12-layout #slides-container .backdrop-overlay {
@@ -118,7 +130,7 @@
   background:
     linear-gradient(90deg, rgb(0 0 0 / 0.62) 0%, rgb(0 0 0 / 0.42) 24%, rgb(0 0 0 / 0.24) 34%, rgb(0 0 0 / 0.08) 48%, rgb(0 0 0 / 0) 70%),
     linear-gradient(180deg, rgb(0 0 0 / 0.34) 0%, rgb(0 0 0 / 0.07) 24%, rgb(0 0 0 / 0) 42%),
-    linear-gradient(0deg, rgb(0 0 0 / 0.76) 0%, rgb(0 0 0 / 0.38) 18%, rgb(0 0 0 / 0) 52%);
+    linear-gradient(0deg, rgb(0 0 0 / 0.58) 0%, rgb(0 0 0 / 0.26) 18%, rgb(0 0 0 / 0) 52%);
 }
 
 .jellyfin-v12-layout #slides-container .slide:has(.video-container.active) .backdrop-overlay {
@@ -164,6 +176,18 @@
 .jellyfin-v12-layout #slides-container .button-container {
   align-items: center;
   gap: 0.75rem;
+}
+
+.jellyfin-v12-layout #slides-container .detail-button {
+  order: 1;
+}
+
+.jellyfin-v12-layout #slides-container .play-button {
+  order: 2;
+}
+
+.jellyfin-v12-layout #slides-container .favorite-button {
+  order: 3;
 }
 
 .jellyfin-v12-layout #slides-container .play-button,
@@ -247,11 +271,11 @@
   }
 
   .jellyfin-v12-layout #slides-container .play-button {
-    order: 1;
+    order: 2;
   }
 
   .jellyfin-v12-layout #slides-container .detail-button {
-    order: 2;
+    order: 1;
   }
 
   .jellyfin-v12-layout #slides-container .favorite-button {
@@ -292,14 +316,22 @@
 @media only screen and (max-width: 767px) and (orientation: portrait) {
   .jellyfin-v12-layout {
     --mb-v12-content-left: 50%;
-    --mb-v12-home-row-top: 78vh;
+    --mb-v12-home-row-top: 72vh;
+    --mb-v12-bottom-fade-mask: linear-gradient(
+      to bottom,
+      #000 0%,
+      #000 54%,
+      rgb(0 0 0 / 0.78) 68%,
+      rgb(0 0 0 / 0.34) 84%,
+      transparent 100%
+    );
   }
 
   .jellyfin-v12-layout #slides-container {
     position: absolute;
     inset: 0 auto auto 0;
     width: 100vw;
-    height: 78vh;
+    height: 86vh;
   }
 
   .jellyfin-v12-layout #slides-container .button-container {

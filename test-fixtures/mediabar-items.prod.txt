@@ -1,9 +1,0 @@
-# MediaBar deterministic visual comparison list.
-# Copy to /web/avatars/list.txt on the target Jellyfin web path to use it.
-# Max 5 items are read, in this order. Lines may be raw item IDs or details URLs.
-
-c36327ccbd6389859824ff6283879b12 # The White Tiger
-d035ae3bd7260c6eb54fbecbd823de4f # Marshmallow
-37f5b71a39e72eed008affdf91687430 # HIT: The 2nd Case
-ef9e1975b8b2c608ff030a377f59eea8 # Bharat
-eb2e3fe1771f01bd380a340299877690 # Logout

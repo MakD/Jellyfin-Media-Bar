@@ -33,6 +33,11 @@ const CONFIG = {
   artworkLoadTimeoutMs: 12000,
   initialArtworkLoadTimeoutMs: 2500,
   trailerPlayerReadyTimeoutMs: 8000,
+  trailerStartupTimeoutMs: 15000,
+  trailerPlaybackMinMs: 4000,
+  trailerPlaybackMaxMs: 180000,
+  trailerEndGraceMs: 2500,
+  trailerIdleAdvanceMs: 7000,
   itemList: {
     path: "/web/avatars/list.txt",
     maxItems: 30,
@@ -68,6 +73,7 @@ const STATE = {
     skipSegmentCache: {},
     sponsorBlockDisabledUntil: 0,
     trailerStartTimes: {},
+    trailerWatchdogs: {},
     isMuted: true,
     isVideoPlaying: false,
   },
@@ -316,6 +322,8 @@ const resetSlideshowState = () => {
     STATE.slideshow.slideInterval.stop();
   }
 
+  Object.values(STATE.slideshow.trailerWatchdogs || {}).forEach(clearTimeout);
+
   const container = document.getElementById("slides-container");
   if (container) {
     while (container.firstChild) {
@@ -336,6 +344,8 @@ const resetSlideshowState = () => {
   STATE.slideshow.totalItems = 0;
   STATE.slideshow.isLoading = false;
   STATE.slideshow.trailerStartTimes = {};
+  STATE.slideshow.trailerWatchdogs = {};
+  STATE.slideshow.isVideoPlaying = false;
 };
 
 /**
@@ -613,6 +623,20 @@ const PlayerUtils = {
       return true;
     } catch (error) {
       return false;
+    }
+  },
+
+  getNumber(player, method, allowZero = true) {
+    if (!player || typeof player[method] !== "function") return null;
+    if (!this.isPlayable(player)) return null;
+
+    try {
+      const value = Number(player[method]());
+      if (!Number.isFinite(value)) return null;
+      if (allowZero ? value < 0 : value <= 0) return null;
+      return value;
+    } catch (error) {
+      return null;
     }
   },
 
@@ -1546,6 +1570,7 @@ const VisibilityObserver = {
         const player = STATE.slideshow.players[itemId];
         PlayerUtils.destroy(player);
       });
+      SlideshowManager.clearAllTrailerWatchdogs();
       STATE.slideshow.players = {};
       container.querySelectorAll(".slide").forEach((slide) => slide.remove());
       STATE.slideshow.createdSlides = {};
@@ -2079,6 +2104,7 @@ const SlideCreator = {
         events: {
           onStateChange: (e) =>
             SlideshowManager.onPlayerStateChange(e, itemId, trailerContainer),
+          onError: (e) => SlideshowManager.onPlayerError(e, itemId),
           onReady: (e) => PlayerUtils.call(e.target, "mute"),
         },
       });
@@ -2177,6 +2203,106 @@ const SlideshowManager = {
     });
   },
 
+  clearTrailerWatchdog(itemId) {
+    const watchdog = STATE.slideshow.trailerWatchdogs[itemId];
+    if (!watchdog) return;
+
+    clearTimeout(watchdog);
+    delete STATE.slideshow.trailerWatchdogs[itemId];
+  },
+
+  clearAllTrailerWatchdogs() {
+    Object.keys(STATE.slideshow.trailerWatchdogs).forEach((itemId) => {
+      this.clearTrailerWatchdog(itemId);
+    });
+  },
+
+  getTrailerWatchdogDelay(player) {
+    const duration = PlayerUtils.getNumber(player, "getDuration", false);
+    const currentTime = PlayerUtils.getNumber(player, "getCurrentTime") || 0;
+
+    if (!duration) return CONFIG.trailerPlaybackMaxMs;
+
+    const remainingMs =
+      Math.max(0, duration - currentTime) * 1000 + CONFIG.trailerEndGraceMs;
+
+    return Math.max(
+      CONFIG.trailerPlaybackMinMs,
+      Math.min(CONFIG.trailerPlaybackMaxMs, remainingMs),
+    );
+  },
+
+  isActiveTrailerSlide(itemId, slide) {
+    const currentItemId =
+      STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+
+    return (
+      itemId === currentItemId &&
+      slide?.classList.contains("active") &&
+      !STATE.slideshow.isPaused &&
+      VisibilityObserver.wasVisible &&
+      !document.hidden
+    );
+  },
+
+  startTrailerWatchdog(itemId, player, delayMs) {
+    this.clearTrailerWatchdog(itemId);
+
+    const timeoutMs = delayMs || this.getTrailerWatchdogDelay(player);
+    const watchdog = setTimeout(() => {
+      if (STATE.slideshow.trailerWatchdogs[itemId] === watchdog) {
+        delete STATE.slideshow.trailerWatchdogs[itemId];
+      }
+
+      const slide = document.querySelector(`.slide[data-item-id="${itemId}"]`);
+      if (!this.isActiveTrailerSlide(itemId, slide)) return;
+
+      console.warn("Trailer did not finish cleanly; advancing slide.", itemId);
+      this.finishTrailerPlayback(itemId, { advance: true });
+    }, timeoutMs);
+    STATE.slideshow.trailerWatchdogs[itemId] = watchdog;
+  },
+
+  finishTrailerPlayback(itemId, options = {}) {
+    const { advance = false, restartTimer = false } = options;
+    const slide = document.querySelector(`.slide[data-item-id="${itemId}"]`);
+    const currentItemId =
+      STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+    const isCurrentSlide = itemId === currentItemId;
+
+    this.clearTrailerWatchdog(itemId);
+
+    if (isCurrentSlide) {
+      STATE.slideshow.isVideoPlaying = false;
+    }
+
+    slide?.querySelector(".video-container")?.classList.remove("active");
+    slide?.querySelector(".backdrop")?.classList.remove("with-video");
+    slide?.querySelector(".plot-container")?.classList.remove("with-video");
+
+    if (advance && this.isActiveTrailerSlide(itemId, slide)) {
+      if (STATE.slideshow.slideInterval) {
+        STATE.slideshow.slideInterval.restart();
+      }
+      this.nextSlide();
+      return;
+    }
+
+    if (
+      restartTimer &&
+      isCurrentSlide &&
+      !STATE.slideshow.isPaused &&
+      STATE.slideshow.slideInterval
+    ) {
+      STATE.slideshow.slideInterval.restart();
+    }
+  },
+
+  onPlayerError(event, itemId) {
+    console.warn("Trailer player error; advancing slide.", event?.data, itemId);
+    this.finishTrailerPlayback(itemId, { advance: true, restartTimer: true });
+  },
+
   toggleMute() {
     STATE.slideshow.isMuted = !STATE.slideshow.isMuted;
 
@@ -2207,6 +2333,7 @@ const SlideshowManager = {
       STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
     if (prevItemId && STATE.slideshow.players[prevItemId]) {
       try {
+        this.clearTrailerWatchdog(prevItemId);
         PlayerUtils.call(STATE.slideshow.players[prevItemId], "pauseVideo");
         PlayerUtils.call(STATE.slideshow.players[prevItemId], "seekTo", 0);
         STATE.slideshow.isVideoPlaying = false;
@@ -2333,6 +2460,12 @@ const SlideshowManager = {
               PlayerUtils.call(player, "seekTo", startTime);
               if (!PlayerUtils.call(player, "playVideo")) {
                 fallbackToTimer();
+              } else {
+                this.startTrailerWatchdog(
+                  currentItemId,
+                  player,
+                  CONFIG.trailerStartupTimeoutMs,
+                );
               }
             } catch (e) {
               fallbackToTimer();
@@ -2444,6 +2577,7 @@ const SlideshowManager = {
       if (distance > keepRange) {
         if (STATE.slideshow.players[itemId]) {
           try {
+            this.clearTrailerWatchdog(itemId);
             PlayerUtils.destroy(STATE.slideshow.players[itemId]);
           } catch (e) {
             console.warn("Error destroying player:", e);
@@ -2480,6 +2614,7 @@ const SlideshowManager = {
       const playLabel = LocalizationUtils.getLocalizedString("Play", "Play");
       pauseButton.setAttribute("aria-label", playLabel);
       pauseButton.setAttribute("title", playLabel);
+      this.clearTrailerWatchdog(currentId);
       PlayerUtils.call(player, "pauseVideo");
     } else {
       if (STATE.slideshow.slideInterval) STATE.slideshow.slideInterval.start();
@@ -2492,7 +2627,13 @@ const SlideshowManager = {
       pauseButton.setAttribute("title", pauseLabel);
 
       if (!LayoutUtils.isPortraitPhone()) {
-        PlayerUtils.call(player, "playVideo");
+        if (PlayerUtils.call(player, "playVideo")) {
+          this.startTrailerWatchdog(
+            currentId,
+            player,
+            CONFIG.trailerStartupTimeoutMs,
+          );
+        }
       }
     }
   },
@@ -2608,9 +2749,9 @@ const SlideshowManager = {
         LayoutUtils.isPortraitPhone()
       ) {
         PlayerUtils.call(STATE.slideshow.players[itemId], "pauseVideo");
-        if (container) container.classList.remove("active");
-        if (backdrop) backdrop.classList.remove("with-video");
-        if (plotContainer) plotContainer.classList.remove("with-video");
+        this.finishTrailerPlayback(itemId, {
+          restartTimer: itemId === currentItemId,
+        });
         return;
       }
 
@@ -2619,19 +2760,24 @@ const SlideshowManager = {
       if (backdrop) backdrop.classList.add("with-video");
       if (plotContainer) plotContainer.classList.add("with-video");
       if (STATE.slideshow.slideInterval) STATE.slideshow.slideInterval.stop();
+      this.startTrailerWatchdog(itemId, STATE.slideshow.players[itemId]);
     } else if (event.data === YT.PlayerState.ENDED) {
-      STATE.slideshow.isVideoPlaying = false;
-      if (container) container.classList.remove("active");
-      if (backdrop) backdrop.classList.remove("with-video");
-      if (plotContainer) plotContainer.classList.remove("with-video");
-      if (STATE.slideshow.slideInterval)
-        STATE.slideshow.slideInterval.restart();
-      this.nextSlide();
+      this.finishTrailerPlayback(itemId, { advance: true });
     } else if (
       event.data === YT.PlayerState.PAUSED ||
       event.data === YT.PlayerState.CUED
     ) {
       STATE.slideshow.isVideoPlaying = false;
+      if (
+        this.isActiveTrailerSlide(itemId, slide) &&
+        container?.classList.contains("active")
+      ) {
+        this.startTrailerWatchdog(
+          itemId,
+          STATE.slideshow.players[itemId],
+          CONFIG.trailerIdleAdvanceMs,
+        );
+      }
     }
   },
 
@@ -2911,6 +3057,7 @@ const initPageVisibilityHandler = () => {
         const player = STATE.slideshow.players[currentItemId];
         if (typeof player.pauseVideo === "function") {
           try {
+            SlideshowManager.clearTrailerWatchdog(currentItemId);
             PlayerUtils.call(player, "pauseVideo");
             STATE.slideshow.isVideoPlaying = false;
           } catch (e) {
@@ -2935,6 +3082,13 @@ const initPageVisibilityHandler = () => {
                 player,
                 "playVideo",
               );
+              if (STATE.slideshow.isVideoPlaying) {
+                SlideshowManager.startTrailerWatchdog(
+                  currentItemId,
+                  player,
+                  CONFIG.trailerStartupTimeoutMs,
+                );
+              }
               if (
                 !STATE.slideshow.isVideoPlaying &&
                 STATE.slideshow.slideInterval

@@ -450,6 +450,12 @@ const LayoutUtils = {
     );
   },
 
+  isPortraitPhone() {
+    return window.matchMedia(
+      "only screen and (max-width: 767px) and (orientation: portrait)",
+    ).matches;
+  },
+
   syncLayoutClass(container) {
     const isV12Shell = this.isJellyfinV12Shell();
     const isV12Layout = this.isJellyfinV12Layout();
@@ -2177,6 +2183,11 @@ const SlideshowManager = {
           !STATE.slideshow.isPaused &&
           VisibilityObserver.wasVisible
         ) {
+          if (LayoutUtils.isPortraitPhone()) {
+            fallbackToTimer();
+            return;
+          }
+
           const artworkReady = await SlideCreator.waitForSlideArtwork(
             currentSlide,
             CONFIG.artworkLoadTimeoutMs,
@@ -2367,7 +2378,9 @@ const SlideshowManager = {
       pauseButton.setAttribute("aria-label", pauseLabel);
       pauseButton.setAttribute("title", pauseLabel);
 
-      PlayerUtils.call(player, "playVideo");
+      if (!LayoutUtils.isPortraitPhone()) {
+        PlayerUtils.call(player, "playVideo");
+      }
     }
   },
 
@@ -2476,7 +2489,11 @@ const SlideshowManager = {
       STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
 
     if (event.data === YT.PlayerState.PLAYING) {
-      if (itemId !== currentItemId || !slide.classList.contains("active")) {
+      if (
+        itemId !== currentItemId ||
+        !slide.classList.contains("active") ||
+        LayoutUtils.isPortraitPhone()
+      ) {
         PlayerUtils.call(STATE.slideshow.players[itemId], "pauseVideo");
         if (container) container.classList.remove("active");
         if (backdrop) backdrop.classList.remove("with-video");
@@ -2795,7 +2812,8 @@ const initPageVisibilityHandler = () => {
         if (
           wasVideoPlayingBeforeHide &&
           currentItemId &&
-          STATE.slideshow.players[currentItemId]
+          STATE.slideshow.players[currentItemId] &&
+          !LayoutUtils.isPortraitPhone()
         ) {
           const player = STATE.slideshow.players[currentItemId];
           if (typeof player.playVideo === "function") {

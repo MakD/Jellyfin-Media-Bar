@@ -22,6 +22,7 @@ const CONFIG = {
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
+  enableSponsorBlock: false,
   layoutMode: "auto",
   imageSizing: {
     backdropMaxWidth: 2560,
@@ -1066,6 +1067,11 @@ const ApiUtils = {
       )
     ) {
       return STATE.slideshow.skipSegmentCache[videoId];
+    }
+
+    if (!CONFIG.enableSponsorBlock) {
+      STATE.slideshow.skipSegmentCache[videoId] = 0;
+      return 0;
     }
 
     try {

@@ -22,6 +22,19 @@ const CONFIG = {
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
+  // Name fragments identifying alternate cuts of a trailer: accessibility
+  // variants and social crops. Matched case insensitively against the
+  // RemoteTrailers entry name. These are ranked below every ordinary entry
+  // rather than removed, so an item whose only trailer is an alternate cut
+  // still plays something.
+  trailerAlternateCutTerms: [
+    "sign language",
+    "asl trailer",
+    "audio description",
+    "audio described",
+    "described audio",
+    "vertical",
+  ],
   youtubeApiLoadTimeoutMs: 8000,
 };
 
@@ -1199,6 +1212,60 @@ const SlideCreator = {
   },
 
   /**
+   * Picks the YouTube video id of the most appropriate trailer for an item.
+   *
+   * RemoteTrailers arrives in metadata provider order, which is not preference
+   * order. The first entry is frequently a promo clip, a teaser or an
+   * accessibility variant rather than the main trailer, and it is not
+   * guaranteed to be a YouTube link at all. Entries are ranked by name, with
+   * provider order breaking ties, and any entry that does not yield a video id
+   * is skipped instead of losing the trailer for that slide.
+   *
+   * @param {Array} remoteTrailers - RemoteTrailers array from the item
+   * @returns {string|null} YouTube video id, or null if no entry is usable
+   */
+  selectTrailerVideoId(remoteTrailers) {
+    if (!Array.isArray(remoteTrailers) || remoteTrailers.length === 0) {
+      return null;
+    }
+
+    const rankName = (name) => {
+      const text = (name || "").toLowerCase();
+      const isAlternateCut = CONFIG.trailerAlternateCutTerms.some((term) =>
+        text.includes(term),
+      );
+
+      let rank;
+      if (text.includes("official trailer")) rank = 5;
+      else if (text.includes("final trailer") || text.includes("main trailer"))
+        rank = 4;
+      else if (text.includes("trailer")) rank = 3;
+      else if (text.includes("teaser")) rank = 2;
+      else rank = 1;
+
+      return isAlternateCut ? rank - 10 : rank;
+    };
+
+    let best = null;
+
+    for (const trailer of remoteTrailers) {
+      let videoId = null;
+      try {
+        videoId = new URL(trailer.Url).searchParams.get("v");
+      } catch (e) {}
+
+      if (!videoId) continue;
+
+      const rank = rankName(trailer.Name);
+      if (!best || rank > best.rank) {
+        best = { videoId, rank };
+      }
+    }
+
+    return best ? best.videoId : null;
+  },
+
+  /**
    * Creates a slide element for an item
    * @param {Object} item - Item data
    * @param {string} title - Title type (Movie/TV Show)
@@ -1221,15 +1288,8 @@ const SlideCreator = {
     let videoId = null;
     let trailerContainer = null;
 
-    if (
-      CONFIG.enableTrailers &&
-      item.RemoteTrailers &&
-      item.RemoteTrailers.length > 0
-    ) {
-      try {
-        const urlObj = new URL(item.RemoteTrailers[0].Url);
-        videoId = urlObj.searchParams.get("v");
-      } catch (e) {}
+    if (CONFIG.enableTrailers) {
+      videoId = this.selectTrailerVideoId(item.RemoteTrailers);
 
       if (videoId) {
         trailerContainer = SlideUtils.createElement("div", {

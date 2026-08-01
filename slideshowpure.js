@@ -24,9 +24,10 @@ const CONFIG = {
   enableTrailers: true,
   // Name fragments identifying alternate cuts of a trailer: accessibility
   // variants and social crops. Matched case insensitively against the
-  // RemoteTrailers entry name. These are ranked below every ordinary entry
-  // rather than removed, so an item whose only trailer is an alternate cut
-  // still plays something.
+  // RemoteTrailers entry name. These are demoted within their tier, so an
+  // alternate cut loses to an ordinary entry of the same tier but still
+  // beats lower tier promo clips, and an item whose only trailer is an
+  // alternate cut still plays something.
   trailerAlternateCutTerms: [
     "sign language",
     "asl trailer",
@@ -1219,7 +1220,9 @@ const SlideCreator = {
    * accessibility variant rather than the main trailer, and it is not
    * guaranteed to be a YouTube link at all. Entries are ranked by name, with
    * provider order breaking ties, and any entry that does not yield a video id
-   * is skipped instead of losing the trailer for that slide.
+   * is skipped instead of losing the trailer for that slide. Alternate cuts
+   * are demoted within their tier: they lose to an ordinary entry of the same
+   * tier but still beat lower tier promo clips.
    *
    * @param {Array} remoteTrailers - RemoteTrailers array from the item
    * @returns {string|null} YouTube video id, or null if no entry is usable
@@ -1243,7 +1246,7 @@ const SlideCreator = {
       else if (text.includes("teaser")) rank = 2;
       else rank = 1;
 
-      return isAlternateCut ? rank - 10 : rank;
+      return isAlternateCut ? rank - 0.5 : rank;
     };
 
     let best = null;
@@ -1251,7 +1254,18 @@ const SlideCreator = {
     for (const trailer of remoteTrailers) {
       let videoId = null;
       try {
-        videoId = new URL(trailer.Url).searchParams.get("v");
+        const urlObj = new URL(trailer.Url);
+        const host = urlObj.hostname.replace(/^www\./, "");
+        if (host === "youtu.be") {
+          videoId = urlObj.pathname.split("/")[1] || null;
+        } else if (
+          (host === "youtube.com" || host === "m.youtube.com") &&
+          urlObj.pathname.startsWith("/embed/")
+        ) {
+          videoId = urlObj.pathname.split("/")[2] || null;
+        } else {
+          videoId = urlObj.searchParams.get("v");
+        }
       } catch (e) {}
 
       if (!videoId) continue;

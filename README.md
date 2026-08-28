@@ -37,13 +37,32 @@ Here I present my version with some code improvements, loading optimizations, an
   
 <summary>index.html</summary>
 
-  1. Navigate to your `jellyfin-web` folder and search for the file index.html. (you can use any code editor, just remember to open with administrator privileges.
+  1. Navigate to your `jellyfin-web` folder and search for the file index.html. (You can use any code editor — just remember to open it with administrator privileges.)
   2. Search for `</head>`
   3. Just before the `</head>`, plug the below code
+
+```html
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:ital,wght@0,400..700;1,400..700&family=IBM+Plex+Mono:wght@400;600&display=swap"
+    />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@6.0.0/slideshowpure.css" />
+    <script defer src="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@6.0.0/slideshowpure.js"></script>
 ```
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@latest/slideshowpure.css" />
-    <script async src="https://cdn.jsdelivr.net/gh/MakD/Jellyfin-Media-Bar@latest/slideshowpure.js"></script>
-```
+</details>
+
+<details>
+
+<summary>Upgrading from v5</summary>
+
+Replace your two old lines with the block above. Three things are different:
+
+- **Fonts.** v6 sets its type in **Archivo Narrow** and **IBM Plex Mono**. The bar still works without the font links — it falls back to Noto Sans and your system monospace — but it will not look the way it is meant to.
+- **`async` → `defer`.** `defer` waits for the page to finish parsing and keeps script order predictable; `async` fires whenever the download happens to land.
+- **`@latest` → `@6.0.0`.** A pinned version cannot change under you when a new release goes out. Use `@6` instead if you would rather pick up 6.x updates automatically.
+
 </details>
 
 And that is it. Hard refresh your web page (CTRL+Shift+R) twice, and Profit!

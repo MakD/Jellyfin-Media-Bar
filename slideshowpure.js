@@ -26,6 +26,12 @@ const CONFIG = {
   maxMovies: 0,
   // series per run when quotas are on. 0 = off (or none, if maxMovies > 0).
   maxSeries: 0,
+
+  // library display names the bar may draw from, e.g. ["Movies","4K Movies"]. Empty = all.
+  libraries: [],
+
+  // library display names allowed to autoplay trailers. Empty = wherever trailers are otherwise enabled.
+  trailerLibraries: [],
   // slides built ahead of the current one. 1 = next only; >1 also builds the previous.
   preloadCount: 1,
 
@@ -169,6 +175,8 @@ const STRUCTURAL_CONFIG_KEYS = new Set([
   "plateAccentFallback",
   "plateSpecRows",
   "useBlurHashPlaceholder",
+  "libraries",
+  "trailerLibraries",
 ]);
 
 const lockedConfigKeys = new Set();
@@ -364,6 +372,8 @@ const STATE = {
     deviceId: null,
     accessToken: null,
     serverAddress: null,
+
+    views: null,
   },
   slideshow: {
     hasInitialized: false,
@@ -382,6 +392,8 @@ const STATE = {
     slideVideoIds: {},
     trailerStartTimer: null,
     trailerWatchdog: null,
+
+    trailerLibraryIds: null,
     firstSlideShown: false,
     hoverHeld: false,
     resumeIndex: 0,
@@ -732,6 +744,9 @@ const resetSlideshowState = () => {
   STATE.slideshow.createdSlides = {};
   STATE.slideshow.totalItems = 0;
   STATE.slideshow.isVideoPlaying = false;
+  STATE.slideshow.trailerLibraryIds = null;
+
+  STATE.jellyfinData.views = null;
 };
 
 const destroyAllPlayers = () => {
@@ -971,6 +986,43 @@ const isDataSaverOn = () => {
   } catch (error) {
     return false;
   }
+};
+
+const LIST_FILTER_PARAMS = {
+  genre: "Genres",
+  tag: "Tags",
+  studio: "Studios",
+  year: "Years",
+  person: "Person",
+  rating: "OfficialRatings",
+};
+
+const EMPTY_LIST = Object.freeze({ ids: [], filters: [] });
+
+const parseListFilter = (line) => {
+  const colon = line.indexOf(":");
+  if (colon < 1) return null;
+
+  const key = line.slice(0, colon).trim().toLowerCase();
+  const param = LIST_FILTER_PARAMS[key];
+  if (!param) return null;
+
+  const value = line
+    .slice(colon + 1)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("|");
+
+  if (!value) return null;
+  return { key, param, value };
+};
+
+const trailersAllowedFor = (item) => {
+  const allowed = STATE.slideshow.trailerLibraryIds;
+  if (!allowed || !allowed.size) return true;
+  if (!item.LibraryId) return true;
+  return allowed.has(item.LibraryId);
 };
 
 const createLocalPlayer = (video) => ({
@@ -1370,7 +1422,7 @@ const ApiUtils = {
     }
   },
 
-  async fetchItemIdsFromList() {
+  async fetchListEntries() {
     try {
       const listFileName = `${STATE.jellyfinData.serverAddress}/web/avatars/list.txt?userId=${STATE.jellyfinData.userId}`;
       const response = await fetch(listFileName);
@@ -1382,7 +1434,7 @@ const ApiUtils = {
             `Slideshow: list.txt returned ${response.status}; using library items.`,
           );
         }
-        return [];
+        return EMPTY_LIST;
       }
 
       const contentType = response.headers.get("content-type") || "";
@@ -1391,7 +1443,7 @@ const ApiUtils = {
           "Slideshow: list.txt returned HTML rather than a text file " +
             "(likely a proxy fallback); using library items.",
         );
-        return [];
+        return EMPTY_LIST;
       }
 
       const text = await response.text();
@@ -1399,30 +1451,99 @@ const ApiUtils = {
         console.warn(
           "Slideshow: list.txt content looks like markup; using library items.",
         );
+        return EMPTY_LIST;
+      }
+
+      const ids = [];
+      const filters = [];
+
+      text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+
+        .filter((line) => line && !line.startsWith("#"))
+        .forEach((line) => {
+
+          if (/^[0-9a-f-]{32,36}$/i.test(line)) {
+            ids.push(line);
+            return;
+          }
+
+          const filter = parseListFilter(line);
+          if (filter) {
+            filters.push(filter);
+            return;
+          }
+
+          console.warn(
+            `Slideshow: ignoring list.txt line "${line}". Expected an item id ` +
+              `or one of ${Object.keys(LIST_FILTER_PARAMS).join(", ")} ` +
+              `followed by ":". Prefix a line with # to comment it out.`,
+          );
+        });
+
+      return { ids, filters };
+    } catch (error) {
+      console.error("Error fetching list.txt:", error);
+      return EMPTY_LIST;
+    }
+  },
+
+  async fetchItemsByFilter(filter) {
+    try {
+      const response = await fetch(
+        `${STATE.jellyfinData.serverAddress}/Items` +
+          `?IncludeItemTypes=Movie,Series&Recursive=true` +
+          `&${filter.param}=${encodeURIComponent(filter.value)}` +
+          `&SortBy=Random&Limit=${CONFIG.maxItems}` +
+          `&${this.itemFieldsQuery()}`,
+        { headers: this.getAuthHeaders() },
+      );
+
+      if (!response.ok) {
+        console.warn(
+          `Slideshow: ${filter.key}:${filter.value} failed (${response.status}).`,
+        );
         return [];
       }
 
-      return (
-        text
-          .split(/\r?\n/)
-          .map((line) => line.trim())
-
-          .filter((line) => line && !line.startsWith("#"))
-
-          .filter((line) => /^[0-9a-f-]{32,36}$/i.test(line))
-      );
+      const { Items: items = [] } = await response.json();
+      if (!items.length) {
+        console.warn(
+          `Slideshow: ${filter.key}:${filter.value} matched nothing.`,
+        );
+      }
+      return items;
     } catch (error) {
-      console.error("Error fetching list.txt:", error);
+      console.error(`Error resolving ${filter.key}:${filter.value}:`, error);
       return [];
     }
   },
 
-  async fetchItemPage(types, limit) {
+  async fetchListedItems(entries) {
+    const [byId, ...byFilter] = await Promise.all([
+      entries.ids.length ? this.fetchItemsByIds(entries.ids) : [],
+      ...entries.filters.map((filter) => this.fetchItemsByFilter(filter)),
+    ]);
+
+    const seen = new Set();
+    const merged = [];
+    byId.concat(...byFilter).forEach((item) => {
+      if (!item || seen.has(item.Id)) return;
+      seen.add(item.Id);
+      merged.push(item);
+    });
+
+    return merged;
+  },
+
+  async fetchItemPage(types, limit, library = null) {
     const response = await fetch(
       `${STATE.jellyfinData.serverAddress}/Items` +
         `?IncludeItemTypes=${types}&Recursive=true&hasOverview=true` +
         `&imageTypes=Logo,Backdrop&SortBy=Random&isPlayed=False` +
-        `&Limit=${limit}&${this.itemFieldsQuery()}`,
+        `&Limit=${limit}&${this.itemFieldsQuery()}` +
+        (library ? `&ParentId=${encodeURIComponent(library.Id)}` : ""),
       {
         headers: this.getAuthHeaders(),
       },
@@ -1446,7 +1567,75 @@ const ApiUtils = {
 
     const { Items: items = [] } = await response.json();
 
-    return items.filter((item) => item.ImageTags && item.ImageTags.Logo);
+    const withLogos = items.filter((item) => item.ImageTags && item.ImageTags.Logo);
+
+    if (library) withLogos.forEach((item) => (item.LibraryId = library.Id));
+
+    return withLogos;
+  },
+
+  async fetchAcrossLibraries(types, limit, libraries) {
+    if (!libraries.length) return await this.fetchItemPage(types, limit);
+
+    const pages = await Promise.all(
+      libraries.map((library) => this.fetchItemPage(types, limit, library)),
+    );
+
+    const merged = [];
+    const longest = Math.max(0, ...pages.map((page) => page.length));
+    for (let i = 0; i < longest; i++) {
+      pages.forEach((page) => {
+        if (i < page.length) merged.push(page[i]);
+      });
+    }
+
+    return merged.slice(0, limit);
+  },
+
+  async fetchViews() {
+    if (STATE.jellyfinData.views) return STATE.jellyfinData.views;
+
+    try {
+      const response = await fetch(
+        `${STATE.jellyfinData.serverAddress}/Users/${STATE.jellyfinData.userId}/Views`,
+        { headers: this.getAuthHeaders() },
+      );
+      if (!response.ok) {
+        console.warn(
+          `Slideshow: could not list libraries (${response.status}); using all.`,
+        );
+        return [];
+      }
+      const { Items: views = [] } = await response.json();
+      STATE.jellyfinData.views = views;
+      return views;
+    } catch (error) {
+      console.error("Error fetching libraries:", error);
+      return [];
+    }
+  },
+
+  async resolveLibraries(names) {
+    if (!names.length) return [];
+
+    const views = await this.fetchViews();
+    if (!views.length) return [];
+
+    const matched = [];
+
+    names.forEach((name) => {
+      const wanted = String(name).trim().toLowerCase();
+      const view = views.find((v) => (v.Name || "").toLowerCase() === wanted);
+      if (view) matched.push(view);
+      else {
+        console.warn(
+          `Slideshow: no library named "${name}". Known libraries:`,
+          views.map((v) => v.Name).join(", "),
+        );
+      }
+    });
+
+    return matched;
   },
 
   async fetchItemsFromServer() {
@@ -1464,13 +1653,33 @@ const ApiUtils = {
       const movieQuota = Math.max(0, CONFIG.maxMovies || 0);
       const seriesQuota = Math.max(0, CONFIG.maxSeries || 0);
 
+      let libraries = await this.resolveLibraries(CONFIG.libraries);
+
+      const trailerLibraries = await this.resolveLibraries(
+        CONFIG.trailerLibraries,
+      );
+      STATE.slideshow.trailerLibraryIds = new Set(
+        trailerLibraries.map((view) => view.Id),
+      );
+      if (!libraries.length && trailerLibraries.length) {
+        libraries = await this.fetchViews();
+      }
+
       if (!movieQuota && !seriesQuota) {
-        return await this.fetchItemPage("Movie,Series", CONFIG.maxItems);
+        return await this.fetchAcrossLibraries(
+          "Movie,Series",
+          CONFIG.maxItems,
+          libraries,
+        );
       }
 
       const [movies, series] = await Promise.all([
-        movieQuota ? this.fetchItemPage("Movie", movieQuota) : [],
-        seriesQuota ? this.fetchItemPage("Series", seriesQuota) : [],
+        movieQuota
+          ? this.fetchAcrossLibraries("Movie", movieQuota, libraries)
+          : [],
+        seriesQuota
+          ? this.fetchAcrossLibraries("Series", seriesQuota, libraries)
+          : [],
       ]);
 
       const merged = movies.concat(series);
@@ -1481,7 +1690,11 @@ const ApiUtils = {
       console.warn(
         "Slideshow: the configured quota matched no items; using the pooled query.",
       );
-      return await this.fetchItemPage("Movie,Series", CONFIG.maxItems);
+      return await this.fetchAcrossLibraries(
+        "Movie,Series",
+        CONFIG.maxItems,
+        libraries,
+      );
     } catch (error) {
       console.error("Error fetching items:", error);
       return [];
@@ -1993,7 +2206,12 @@ const SlideCreator = {
     let hasLocalTrailer = false;
     let trailerContainer = null;
 
-    if (CONFIG.enableTrailers && !isTouchLayout() && !isDataSaverOn()) {
+    if (
+      CONFIG.enableTrailers &&
+      !isTouchLayout() &&
+      !isDataSaverOn() &&
+      trailersAllowedFor(item)
+    ) {
 
       hasLocalTrailer =
         CONFIG.preferLocalTrailers && (item.LocalTrailerCount || 0) > 0;
@@ -3415,10 +3633,18 @@ const SlideshowManager = {
 
       mark("items-fetch-start");
 
-      const listedIds = await ApiUtils.fetchItemIdsFromList();
-      let items = listedIds.length
-        ? await ApiUtils.fetchItemsByIds(listedIds)
-        : await ApiUtils.fetchItemsFromServer();
+      const listed = await ApiUtils.fetchListEntries();
+      let items =
+        listed.ids.length || listed.filters.length
+          ? await ApiUtils.fetchListedItems(listed)
+          : await ApiUtils.fetchItemsFromServer();
+
+      if (!items.length && (listed.ids.length || listed.filters.length)) {
+        console.warn(
+          "Slideshow: list.txt matched no items; using library items.",
+        );
+        items = await ApiUtils.fetchItemsFromServer();
+      }
       mark("items-fetched");
 
       items = this.applySessionOrder(items);
@@ -3591,6 +3817,12 @@ const SettingsPanel = {
       },
     },
     {
+
+      key: "libraries",
+      label: "Libraries",
+      type: "multichoice",
+    },
+    {
       key: "shuffleInterval",
       label: "Slide duration",
       type: "range",
@@ -3610,6 +3842,11 @@ const SettingsPanel = {
       max: 100,
       step: 5,
       format: (value) => `${value}%`,
+    },
+    {
+      key: "trailerLibraries",
+      label: "Trailers from",
+      type: "multichoice",
     },
     {
       key: "rememberOrderForSession",
@@ -3736,6 +3973,16 @@ const SettingsPanel = {
       this.controls.set(field.key, { group, buttons });
     }
 
+    if (field.type === "multichoice") {
+      const group = SlideUtils.createElement("div", { className: "ss-multi" });
+      const boxes = new Map();
+      row.classList.add("is-stacked");
+      row.append(group);
+      this.controls.set(field.key, { group, boxes });
+
+      this.populateMultichoice(field, group, boxes, locked);
+    }
+
     if (locked) {
       row.append(
         SlideUtils.createElement("span", {
@@ -3745,6 +3992,56 @@ const SettingsPanel = {
       );
     }
     return row;
+  },
+
+  async populateMultichoice(field, group, boxes, locked) {
+    if (boxes.size) return;
+
+    const views = await ApiUtils.fetchViews();
+
+    if (!views.length) {
+      group.append(
+        SlideUtils.createElement("span", {
+          className: "ss-set-note",
+          textContent: "Could not read your libraries.",
+        }),
+      );
+      return;
+    }
+
+    views.forEach((view) => {
+      const item = SlideUtils.createElement("label", {
+        className: "ss-multi-item",
+      });
+      const input = SlideUtils.createElement("input", {
+        type: "checkbox",
+        className: "ss-multi-box",
+        disabled: locked,
+        onchange: () => this.commitMultichoice(field.key),
+      });
+      item.append(
+        input,
+        SlideUtils.createElement("span", { textContent: view.Name }),
+      );
+      group.append(item);
+      boxes.set(view.Name, input);
+    });
+
+    this.sync();
+  },
+
+  commitMultichoice(key) {
+    const control = this.controls.get(key);
+    const names = [...control.boxes]
+      .filter(([, input]) => input.checked)
+      .map(([name]) => name);
+
+    if (!names.length) {
+      this.sync();
+      return;
+    }
+
+    this.commit(key, names.length === control.boxes.size ? [] : names);
   },
 
   commit(key, value) {
@@ -3771,6 +4068,14 @@ const SettingsPanel = {
         return;
       }
 
+      if (control.boxes) {
+        const chosen = new Set((value || []).map(String));
+        control.boxes.forEach((input, name) => {
+          input.checked = chosen.size === 0 || chosen.has(name);
+        });
+        return;
+      }
+
       control.buttons.forEach((button) => {
         const active = button.dataset.value === String(value);
         button.classList.toggle("is-active", active);
@@ -3783,6 +4088,18 @@ const SettingsPanel = {
       const off = !CONFIG.enableTrailers;
       volume.disabled = off || lockedConfigKeys.has("trailerVolume");
       volume.closest(".ss-set-row")?.classList.toggle("is-inactive", off);
+    }
+
+    const trailerLibs = this.controls.get("trailerLibraries");
+    if (trailerLibs?.boxes) {
+      const off = !CONFIG.enableTrailers;
+      const locked = lockedConfigKeys.has("trailerLibraries");
+      trailerLibs.boxes.forEach((input) => {
+        input.disabled = off || locked;
+      });
+      trailerLibs.group
+        .closest(".ss-set-row")
+        ?.classList.toggle("is-inactive", off);
     }
   },
 

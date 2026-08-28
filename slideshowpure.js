@@ -2681,12 +2681,9 @@ const SlideCreator = {
   },
 
   createPlayButton(itemId) {
-    const playText = LocalizationUtils.getLocalizedString("Play", "Play");
-    return SlideUtils.createElement("button", {
+
+    const button = SlideUtils.createElement("button", {
       className: "detailButton btnPlay play-button",
-      innerHTML: `
-      <span class="play-text">${playText}</span>
-    `,
       tabIndex: "0",
       onclick: (e) => {
         e.preventDefault();
@@ -2694,6 +2691,16 @@ const SlideCreator = {
         ApiUtils.playItem(itemId);
       },
     });
+
+    button.appendChild(
+      SlideUtils.createElement(
+        "span",
+        { className: "play-text" },
+        LocalizationUtils.getLocalizedString("Play", "Play"),
+      ),
+    );
+
+    return button;
   },
 
   createDetailButton(itemId) {

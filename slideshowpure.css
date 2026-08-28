@@ -1,10 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v6.0.0
- *
- * The Archivo Narrow webfont is linked from index.html, not @import-ed here:
- * an @import cannot start downloading until this stylesheet has itself been
- * fetched and parsed, which serialises two round trips before any text can
- * render in the intended face.
+ * Jellyfin Slideshow by M0RPH3US v6.1.0
  */
 
 :root {
@@ -2058,50 +2053,6 @@
   background: #fff;
   color: #10131a;
   font-weight: 600;
-}
-
-.ss-multi {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  max-height: 9rem;
-  overflow-y: auto;
-  padding: 0.2rem;
-  border-radius: 0.55rem;
-  background: rgb(255 255 255 / 0.07);
-}
-
-.ss-multi-item {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.35rem 0.45rem;
-  border-radius: 0.4rem;
-  color: rgb(255 255 255 / 0.72);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition:
-    background-color 0.18s ease,
-    color 0.18s ease;
-}
-
-.ss-multi-item:hover:not(:has(.ss-multi-box:disabled)) {
-  background: rgb(255 255 255 / 0.06);
-  color: #fff;
-}
-
-.ss-multi-item:has(.ss-multi-box:disabled) {
-  cursor: default;
-  opacity: 0.5;
-}
-
-.ss-multi-box {
-  flex: none;
-  width: 0.95rem;
-  height: 0.95rem;
-  margin: 0;
-  accent-color: #fff;
-  cursor: inherit;
 }
 
 .ss-switch {

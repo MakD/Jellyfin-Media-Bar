@@ -1,5 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v4.0.6
+ * Jellyfin Slideshow by M0RPH3US v5.0.1
  */
 
 //Core Module Configuration
@@ -22,6 +22,21 @@ const CONFIG = {
   fadeTransitionDuration: 500,
   slideAnimationEnabled: true,
   enableTrailers: true,
+  // Name fragments identifying alternate cuts of a trailer: accessibility
+  // variants and social crops. Matched case insensitively against the
+  // RemoteTrailers entry name. These are demoted within their tier, so an
+  // alternate cut loses to an ordinary entry of the same tier but still
+  // beats lower tier promo clips, and an item whose only trailer is an
+  // alternate cut still plays something.
+  trailerAlternateCutTerms: [
+    "sign language",
+    "asl trailer",
+    "audio description",
+    "audio described",
+    "described audio",
+    "vertical",
+  ],
+  syncPageBackdrop: true,
   youtubeApiLoadTimeoutMs: 8000,
   enableSponsorBlock: true,
   sponsorBlockTimeoutMs: 5000,
@@ -821,6 +836,11 @@ const TrailerUtils = {
     if (!/\b(trailer|teaser)\b/.test(text)) {
       score -= 20;
     }
+    // Alternate cuts (accessibility variants, social crops) lose to an
+    // ordinary entry of the same tier but still beat lower tier promo clips.
+    if (CONFIG.trailerAlternateCutTerms.some((term) => text.includes(term))) {
+      score -= 25;
+    }
 
     return { videoId, trailer, score, index };
   },
@@ -1121,47 +1141,23 @@ const LocalizationUtils = {
          */
         const chunkText = await response.text();
 
-        const replaceEscaped = (text) =>
-          text
-            .replace(/\\"/g, '"')
-            .replace(/\\n/g, "\n")
-            .replace(/\\\\/g, "\\")
-            .replace(/\\'/g, "'");
-        try {
-          const START = /^(.*)JSON\.parse\(['"]/gms;
-          const END = /['"]?\)?\s*}?(\r\n|\r|\n)?}?]?\)?;(\r\n|\r|\n)?$/gms;
-
-          const jsonString = replaceEscaped(
-            chunkText.replace(START, "").replace(END, ""),
-          );
-          this.translations[locale] = JSON.parse(jsonString);
-          return;
-        } catch (e) {
-          console.error("Failed to parse JSON from standard extraction.");
+        // The chunk wraps the catalogue in JSON.parse('<js string literal>').
+        // Decode that literal in a single pass: sequential replaces corrupt
+        // catalogues whose values contain both backslashes and quotes (fr, it...).
+        const literal = chunkText.match(/JSON\.parse\((['"])([\s\S]*?)\1\)/);
+        if (!literal) {
+          throw new Error("Translation chunk has no JSON.parse() payload");
         }
-
-        let jsonMatch = chunkText.match(/JSON\.parse\(['"](.*?)['"]\)/);
-        if (jsonMatch) {
-          try {
-            const jsonString = replaceEscaped(jsonMatch[1]);
-            this.translations[locale] = JSON.parse(jsonString);
-            return;
-          } catch (e) {
-            console.error("Failed to parse JSON from direct extraction.");
-          }
-        }
-
-        const jsonStart = chunkText.indexOf("{");
-        const jsonEnd = chunkText.lastIndexOf("}") + 1;
-        if (jsonStart !== -1 && jsonEnd > jsonStart) {
-          const jsonString = chunkText.substring(jsonStart, jsonEnd);
-          try {
-            this.translations[locale] = JSON.parse(jsonString);
-            return;
-          } catch (e) {
-            console.error("Failed to parse JSON from chunk:", e);
-          }
-        }
+        const jsonString = literal[2].replace(
+          /\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g,
+          (_, esc) => {
+            if (esc[0] === "u" || esc[0] === "x") {
+              return String.fromCharCode(parseInt(esc.slice(1), 16));
+            }
+            return { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", 0: "\0" }[esc] ?? esc;
+          },
+        );
+        this.translations[locale] = JSON.parse(jsonString);
       } catch (error) {
         console.error("Error loading translations:", error);
       } finally {
@@ -1609,6 +1605,7 @@ const VisibilityObserver = {
       STATE.slideshow.players = {};
       container.querySelectorAll(".slide").forEach((slide) => slide.remove());
       STATE.slideshow.createdSlides = {};
+      PageBackdrop.clear();
     }
 
     this.wasVisible = isVisible;
@@ -1632,6 +1629,163 @@ const VisibilityObserver = {
     window.addEventListener("hashchange", this.updateVisibility.bind(this));
 
     this.updateVisibility();
+  },
+};
+
+/**
+ * Mirrors the featured slide into Jellyfin's own page backdrop layer, so the
+ * background behind the home page follows whatever the slideshow is showing
+ * instead of staying on unrelated library art.
+ *
+ * Reuses the exact backdrop URL the active slide already requested, so the
+ * browser serves it from cache and no extra image is fetched.
+ *
+ * Only active while the slideshow is visible. Leaving the home page restores
+ * Jellyfin's normal backdrop behaviour, so no other page is affected.
+ * Disable with CONFIG.syncPageBackdrop.
+ */
+const PageBackdrop = {
+  LAYER_CLASS: "slideshow-page-backdrop",
+  observer: null,
+  isWriting: false,
+  currentItemId: null,
+
+  /**
+   * Jellyfin creates .backdropContainer lazily, so it may not exist yet
+   * @returns {HTMLElement} The backdrop container
+   */
+  getOrCreateContainer() {
+    let container = document.querySelector(".backdropContainer");
+    if (!container) {
+      container = SlideUtils.createElement("div", {
+        className: "backdropContainer",
+      });
+      document.body.insertBefore(container, document.body.firstChild);
+    }
+    return container;
+  },
+
+  /**
+   * @param {HTMLElement} container - The backdrop container
+   * @returns {HTMLElement} Our own backdrop layer, created if needed
+   */
+  getOrCreateLayer(container) {
+    let layer = container.querySelector(`.${this.LAYER_CLASS}`);
+    if (!layer || !layer.isConnected) {
+      layer = SlideUtils.createElement("div", {
+        className: `backdropImage ${this.LAYER_CLASS}`,
+      });
+      container.appendChild(layer);
+    }
+    return layer;
+  },
+
+  /**
+   * Jellyfin runs its own backdrop rotator into the same container: it adds
+   * .backdropImage siblings and cycles them on a timer, which paints over
+   * whatever we set. While the slideshow owns the screen, keep our layer the
+   * only one and make sure it stays last.
+   * @param {HTMLElement} container - The backdrop container
+   */
+  evictForeignLayers(container) {
+    const layers = container.querySelectorAll(".backdropImage");
+    layers.forEach((layer) => {
+      if (!layer.classList.contains(this.LAYER_CLASS)) {
+        layer.remove();
+      }
+    });
+
+    const ours = container.querySelector(`.${this.LAYER_CLASS}`);
+    if (ours && ours !== container.lastElementChild) {
+      container.appendChild(ours);
+    }
+  },
+
+  /**
+   * Reacts to the rotator instead of polling for it
+   */
+  startObserver(container) {
+    if (this.observer) return;
+
+    this.observer = new MutationObserver(() => {
+      // Our own eviction mutates the container, which would re-enter here
+      if (this.isWriting) return;
+
+      this.isWriting = true;
+      try {
+        this.evictForeignLayers(container);
+      } finally {
+        this.isWriting = false;
+      }
+    });
+
+    this.observer.observe(container, { childList: true });
+  },
+
+  stopObserver() {
+    if (!this.observer) return;
+    this.observer.disconnect();
+    this.observer = null;
+  },
+
+  /**
+   * Points the page backdrop at the given item
+   * @param {string} itemId - Id of the item the slideshow is showing
+   */
+  update(itemId) {
+    if (!CONFIG.syncPageBackdrop) return;
+
+    const item = STATE.slideshow.loadedItems[itemId];
+    // Item data arrives with the slide. Until it does, leave the previous
+    // backdrop up rather than clearing it, so the page does not flash.
+    if (!item) return;
+
+    const src = SlideCreator.buildImageUrl(
+      item,
+      "Backdrop",
+      0,
+      STATE.jellyfinData.serverAddress,
+      60,
+    );
+    if (!src) return;
+
+    const container = this.getOrCreateContainer();
+
+    this.isWriting = true;
+    try {
+      const layer = this.getOrCreateLayer(container);
+
+      if (this.currentItemId !== itemId || layer.style.backgroundImage === "") {
+        layer.style.backgroundImage = `url("${src.replace(/"/g, "%22")}")`;
+        layer.classList.remove("backdropImageFadeIn");
+        // Force a reflow so the fade replays for the new image
+        void layer.offsetWidth;
+        layer.classList.add("backdropImageFadeIn");
+        this.currentItemId = itemId;
+      }
+
+      this.evictForeignLayers(container);
+    } finally {
+      this.isWriting = false;
+    }
+
+    document
+      .querySelector(".backgroundContainer")
+      ?.classList.add("withBackdrop");
+    this.startObserver(container);
+  },
+
+  /**
+   * Hands the backdrop back to Jellyfin
+   */
+  clear() {
+    this.stopObserver();
+    this.currentItemId = null;
+
+    document.querySelector(`.${this.LAYER_CLASS}`)?.remove();
+    document
+      .querySelector(".backgroundContainer")
+      ?.classList.remove("withBackdrop");
   },
 };
 
@@ -1690,6 +1844,7 @@ const SlideCreator = {
 
     return `${baseUrl}?${params.toString()}`;
   },
+
 
   /**
    * Creates a slide element for an item
@@ -1919,7 +2074,7 @@ const SlideCreator = {
         const milliseconds = runtime / 10000;
         const currentTime = new Date();
         const endTime = new Date(currentTime.getTime() + milliseconds);
-        const options = { hour: "2-digit", minute: "2-digit", hour12: false };
+        const options = { hour: "2-digit", minute: "2-digit" };
         const formattedEndTime = endTime.toLocaleTimeString([], options);
         const endsAtText = LocalizationUtils.getLocalizedString(
           "EndsAtValue",
@@ -2446,6 +2601,7 @@ const SlideshowManager = {
 
     STATE.slideshow.currentSlideIndex = index;
     this.updateDots();
+    PageBackdrop.update(currentItemId);
     this.preloadAdjacentSlides(index);
     this.pruneSlideCache();
 
@@ -3158,6 +3314,7 @@ window.slideshowPure = {
   SlideshowManager,
   VisibilityObserver,
   LayoutUtils,
+  PageBackdrop,
   initSlideshowData: () => {
     SlideshowManager.loadSlideshowData();
   },

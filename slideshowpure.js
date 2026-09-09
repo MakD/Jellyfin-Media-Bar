@@ -1141,47 +1141,23 @@ const LocalizationUtils = {
          */
         const chunkText = await response.text();
 
-        const replaceEscaped = (text) =>
-          text
-            .replace(/\\"/g, '"')
-            .replace(/\\n/g, "\n")
-            .replace(/\\\\/g, "\\")
-            .replace(/\\'/g, "'");
-        try {
-          const START = /^(.*)JSON\.parse\(['"]/gms;
-          const END = /['"]?\)?\s*}?(\r\n|\r|\n)?}?]?\)?;(\r\n|\r|\n)?$/gms;
-
-          const jsonString = replaceEscaped(
-            chunkText.replace(START, "").replace(END, ""),
-          );
-          this.translations[locale] = JSON.parse(jsonString);
-          return;
-        } catch (e) {
-          console.error("Failed to parse JSON from standard extraction.");
+        // The chunk wraps the catalogue in JSON.parse('<js string literal>').
+        // Decode that literal in a single pass: sequential replaces corrupt
+        // catalogues whose values contain both backslashes and quotes (fr, it...).
+        const literal = chunkText.match(/JSON\.parse\((['"])([\s\S]*?)\1\)/);
+        if (!literal) {
+          throw new Error("Translation chunk has no JSON.parse() payload");
         }
-
-        let jsonMatch = chunkText.match(/JSON\.parse\(['"](.*?)['"]\)/);
-        if (jsonMatch) {
-          try {
-            const jsonString = replaceEscaped(jsonMatch[1]);
-            this.translations[locale] = JSON.parse(jsonString);
-            return;
-          } catch (e) {
-            console.error("Failed to parse JSON from direct extraction.");
-          }
-        }
-
-        const jsonStart = chunkText.indexOf("{");
-        const jsonEnd = chunkText.lastIndexOf("}") + 1;
-        if (jsonStart !== -1 && jsonEnd > jsonStart) {
-          const jsonString = chunkText.substring(jsonStart, jsonEnd);
-          try {
-            this.translations[locale] = JSON.parse(jsonString);
-            return;
-          } catch (e) {
-            console.error("Failed to parse JSON from chunk:", e);
-          }
-        }
+        const jsonString = literal[2].replace(
+          /\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/g,
+          (_, esc) => {
+            if (esc[0] === "u" || esc[0] === "x") {
+              return String.fromCharCode(parseInt(esc.slice(1), 16));
+            }
+            return { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", 0: "\0" }[esc] ?? esc;
+          },
+        );
+        this.translations[locale] = JSON.parse(jsonString);
       } catch (error) {
         console.error("Error loading translations:", error);
       } finally {

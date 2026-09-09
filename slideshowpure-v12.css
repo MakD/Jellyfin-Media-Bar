@@ -8,7 +8,12 @@
 
 .jellyfin-v12-layout {
   --mb-v12-content-left: clamp(3rem, 5vw, 5.5rem);
-  --mb-v12-home-row-top: clamp(35.5rem, calc(50vh + 14.5rem), 50rem);
+  /* The slide content is stacked in vh from the vertical middle: the button
+     row starts at 50% + 17vh (slideshowpure.css) and is ~2.6rem tall. The
+     home rows must never start above that, whatever the viewport height,
+     so every row-top formula below is floored by this value. */
+  --mb-v12-content-floor: calc(67vh + 4.5rem);
+  --mb-v12-home-row-top: max(clamp(35.5rem, calc(50vh + 14.5rem), 50rem), var(--mb-v12-content-floor));
   --mb-v12-bottom-fade-mask: linear-gradient(
     to bottom,
     #000 0%,
@@ -308,7 +313,7 @@
 
 @media only screen and (max-height: 767px) and (orientation: landscape) {
   .jellyfin-v12-layout {
-    --mb-v12-home-row-top: clamp(31rem, calc(50vh + 11rem), 40rem);
+    --mb-v12-home-row-top: max(clamp(31rem, calc(50vh + 11rem), 40rem), var(--mb-v12-content-floor));
   }
 
 }

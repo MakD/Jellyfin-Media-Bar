@@ -342,6 +342,10 @@ const setConfig = (patch) => {
   saveStoredConfig(patch);
   const changed = applyConfig(patch, { label: "runtime" });
 
+  if (changed.includes("shuffleInterval") && STATE.slideshow.slideInterval) {
+    STATE.slideshow.slideInterval.interval = CONFIG.shuffleInterval;
+  }
+
   if (changed.some((key) => STRUCTURAL_CONFIG_KEYS.has(key))) {
     resetSlideshowState();
     bootstrap();
@@ -1902,10 +1906,11 @@ class SlideTimer {
     this.startedAt = Date.now() - (this.interval - this.remaining);
     this.resumeId = setTimeout(() => {
       this.resumeId = null;
-      this.callback();
+
       this.startedAt = Date.now();
       this.remaining = this.interval;
       this.timerId = setInterval(this.callback, this.interval);
+      this.callback();
     }, this.remaining);
     return this;
   }
@@ -3232,13 +3237,13 @@ const SlideshowManager = {
       STATE.slideshow.trailerStartTimer = setTimeout(() => {
         this.startTrailer(index, currentItemId, fallbackToTimer);
       }, CONFIG.trailerStartDelayMs);
-    } else {
-      fallbackToTimer();
     }
+
+    fallbackToTimer();
 
     function fallbackToTimer() {
       if (!STATE.slideshow.isPaused && STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.restart();
+        STATE.slideshow.slideInterval.start();
       }
     }
 
@@ -3704,12 +3709,36 @@ const SlideshowManager = {
     STATE.slideshow.isVideoPlaying = true;
     this.setTrailerVisible(itemId, trailerContainer, true);
     STATE.slideshow.slideInterval?.stop();
+
+    this.setProgressRunning(false);
   },
 
   onTrailerEnded(itemId, trailerContainer) {
     STATE.slideshow.isVideoPlaying = false;
     this.setTrailerVisible(itemId, trailerContainer, false);
     this.nextSlide();
+  },
+
+  resumeAfterTrailer(itemId) {
+    const currentItemId =
+      STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+    if (itemId !== currentItemId) return;
+
+    if (
+      STATE.slideshow.isPaused ||
+      STATE.slideshow.hoverHeld ||
+      document.hidden
+    ) {
+      return;
+    }
+
+    const timer = STATE.slideshow.slideInterval;
+    if (!timer || timer.timerId || timer.resumeId) return;
+
+    timer.start();
+    this.restartProgress(
+      document.querySelector(`.slide[data-item-id="${itemId}"]`),
+    );
   },
 
   onPlayerStateChange(event, itemId, trailerContainer) {
@@ -3726,7 +3755,13 @@ const SlideshowManager = {
       event.data === YTRef.PlayerState.PAUSED ||
       event.data === YTRef.PlayerState.CUED
     ) {
+
+      const currentItemId =
+        STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+      if (itemId !== currentItemId) return;
+
       STATE.slideshow.isVideoPlaying = false;
+      this.resumeAfterTrailer(itemId);
     }
   },
 
@@ -3735,10 +3770,6 @@ const SlideshowManager = {
       `Trailer for ${itemId} failed with YouTube error ${event?.data}; continuing without it.`,
     );
 
-    clearTimeout(STATE.slideshow.trailerWatchdog);
-    STATE.slideshow.trailerWatchdog = null;
-    STATE.slideshow.isVideoPlaying = false;
-
     const slide = document.querySelector(`.slide[data-item-id="${itemId}"]`);
     trailerContainer?.classList.remove("active");
     slide?.querySelector(".backdrop")?.classList.remove("with-video");
@@ -3746,9 +3777,15 @@ const SlideshowManager = {
 
     STATE.slideshow.slideVideoIds[itemId] = null;
 
-    if (!STATE.slideshow.isPaused && STATE.slideshow.slideInterval) {
-      STATE.slideshow.slideInterval.restart();
-    }
+    const currentItemId =
+      STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
+    if (itemId !== currentItemId) return;
+
+    clearTimeout(STATE.slideshow.trailerWatchdog);
+    STATE.slideshow.trailerWatchdog = null;
+    STATE.slideshow.isVideoPlaying = false;
+
+    this.resumeAfterTrailer(itemId);
   },
 
   async loadSlideshowData() {
@@ -4417,9 +4454,11 @@ const initPageVisibilityHandler = () => {
     if (document.hidden) {
       console.log("Tab inactive - pausing slideshow and videos");
       wasVideoPlayingBeforeHide = STATE.slideshow.isVideoPlaying;
+
       if (STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.stop();
+        STATE.slideshow.slideInterval.pause();
       }
+      SlideshowManager.setProgressRunning(false);
       const currentItemId =
         STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
       if (currentItemId && STATE.slideshow.players[currentItemId]) {
@@ -4451,14 +4490,16 @@ const initPageVisibilityHandler = () => {
             } catch (e) {
               console.warn("Error resuming video on tab show:", e);
               if (STATE.slideshow.slideInterval) {
-                STATE.slideshow.slideInterval.start();
+                STATE.slideshow.slideInterval.resume();
               }
+              SlideshowManager.setProgressRunning(true);
             }
           }
         } else {
           if (STATE.slideshow.slideInterval) {
-            STATE.slideshow.slideInterval.start();
+            STATE.slideshow.slideInterval.resume();
           }
+          SlideshowManager.setProgressRunning(true);
         }
         wasVideoPlayingBeforeHide = false;
       }

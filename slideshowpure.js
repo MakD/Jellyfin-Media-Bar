@@ -2907,7 +2907,10 @@ const SlideCreator = {
           );
 
           const host = document.getElementById(`yt-player-${itemId}`);
-          host?.replaceChildren(video);
+          if (host) {
+            host.textContent = "";
+            host.appendChild(video);
+          }
           STATE.slideshow.players[itemId] = createLocalPlayer(video);
           STATE.slideshow.slideVideoIds[itemId] = `local:${itemId}`;
         } else {
@@ -2979,7 +2982,7 @@ const SlideshowManager = {
       container.appendChild(dotsContainer);
     }
 
-    dotsContainer.replaceChildren();
+    dotsContainer.textContent = "";
 
     const count = Math.min(STATE.slideshow.totalItems, CONFIG.maxDots);
 

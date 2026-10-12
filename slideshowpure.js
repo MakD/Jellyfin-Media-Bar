@@ -73,6 +73,9 @@ const CONFIG = {
   // 0-100. Volume once unmuted. Trailers always start muted.
   trailerVolume: 50,
 
+  // true|false. Show the uploader's default captions on YouTube trailers. Off by default: the trailer fills the bar behind the home rows, so captions land on top of them.
+  trailerCaptions: false,
+
   // px. At or below this width the layout is swipe-only: no arrows, no trailer, no volume.
   touchLayoutMaxWidth: 767,
 
@@ -410,6 +413,17 @@ const STATE = {
     isMuted: true,
     isVideoPlaying: false,
   },
+};
+
+// YouTube loads its caption module once playback starts, so this runs on ready and again on play.
+const hideTrailerCaptions = (player) => {
+  if (CONFIG.trailerCaptions) return;
+  try {
+    player.unloadModule("captions");
+    player.unloadModule("cc");
+  } catch (err) {
+    // player not ready or no caption module: nothing to hide
+  }
 };
 
 const loadYouTubeAPI = () => {
@@ -2923,13 +2937,18 @@ const SlideCreator = {
                 start: startTime,
               },
               events: {
-                onStateChange: (e) =>
+                onStateChange: (e) => {
+                  if (e.data === YT.PlayerState.PLAYING) hideTrailerCaptions(e.target);
                   SlideshowManager.onPlayerStateChange(
                     e,
                     itemId,
                     trailerContainer,
-                  ),
-                onReady: (e) => e.target.mute(),
+                  );
+                },
+                onReady: (e) => {
+                  e.target.mute();
+                  hideTrailerCaptions(e.target);
+                },
 
                 onError: (e) =>
                   SlideshowManager.onPlayerError(e, itemId, trailerContainer),
@@ -3956,6 +3975,7 @@ const SettingsPanel = {
       step: 5,
       format: (value) => `${value}%`,
     },
+    { key: "trailerCaptions", label: "Trailer captions", type: "switch" },
     {
       key: "trailerLibraries",
       label: "Trailers from",

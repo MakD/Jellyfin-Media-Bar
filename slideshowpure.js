@@ -1,5 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v6.1.1
+ * Jellyfin Slideshow by M0RPH3US v6.1.2
  */
 
 const CONFIG = {

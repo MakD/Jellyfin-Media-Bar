@@ -373,6 +373,32 @@ const CONFIG_SERVER_DEFAULTS = JSON.parse(JSON.stringify(CONFIG));
 applyConfig(readStoredConfig(), { label: "localStorage" });
 applyConfig(readUrlConfig(), { label: "url" });
 
+const adoptServerConfig = (key, value) => {
+  if (key === "IMAGE_SVG") {
+    applyImageSvgOverrides(value);
+    return;
+  }
+
+  if (!(key in CONFIG) || value === -1) return;
+
+  const clean = validateConfigValue(key, value);
+  if (clean === null) return;
+
+  CONFIG_SERVER_DEFAULTS[key] = clean;
+
+  const viewer = { ...readStoredConfig(), ...readUrlConfig() };
+  if (key in viewer && !lockedConfigKeys.has(key)) return;
+  CONFIG[key] = clean;
+};
+
+const CONFIG_HANDLE = new Proxy(CONFIG, {
+  set(target, key, value) {
+    if (typeof key === "string") adoptServerConfig(key, value);
+
+    return true;
+  },
+});
+
 const STATE = {
   jellyfinData: {
     userId: null,
@@ -419,14 +445,13 @@ const STATE = {
   },
 };
 
-// YouTube loads its caption module once playback starts, so this runs on ready and again on play.
 const hideTrailerCaptions = (player) => {
   if (CONFIG.trailerCaptions) return;
   try {
     player.unloadModule("captions");
     player.unloadModule("cc");
   } catch (err) {
-    // player not ready or no caption module: nothing to hide
+
   }
 };
 
@@ -3106,7 +3131,7 @@ const SlideshowManager = {
     );
 
     const dotsHeight = dots.getBoundingClientRect().height || 6;
-    const rows = document.querySelector(".homeSectionsContainer");
+    const rows = LayoutSync.visible(".homeSectionsContainer");
     const rowsTop = rows
       ? rows.getBoundingClientRect().top - containerTop
       : Infinity;
@@ -3860,9 +3885,20 @@ const LayoutSync = {
     return true;
   },
 
+  visible(selector) {
+    for (const el of document.querySelectorAll(selector)) {
+      if (el.getClientRects().length) return el;
+    }
+    return null;
+  },
+
   update() {
-    const page = document.querySelector(".page");
+
+    const rows = this.visible(".homeSectionsContainer");
+    const page = rows?.closest(".page") || this.visible(".page");
     if (!page) return;
+
+    this.observeRows(rows, page);
 
     const offset = Math.max(
       0,
@@ -3873,7 +3909,6 @@ const LayoutSync = {
 
     let moved = this.publish("--slideshow-page-offset", `${offset}px`);
 
-    const rows = document.querySelector(".homeSectionsContainer");
     const stage = document.getElementById("slides-container");
     if (rows && stage) {
       const rowsTop = Math.round(
@@ -3897,35 +3932,25 @@ const LayoutSync = {
 
     document.fonts?.ready?.then(() => this.update()).catch(() => {});
 
-    const ready = () =>
-      document.querySelector(".page") &&
-      document.querySelector(".homeSectionsContainer");
-
-    if (ready()) {
-      this.observeRows();
-      return;
-    }
+    if (this.observedRows) return;
 
     const observer = new MutationObserver(() => {
-      if (!ready()) return;
+      if (!this.visible(".homeSectionsContainer")) return;
       this.update();
-      this.observeRows();
       observer.disconnect();
     });
     observer.observe(document.body, { childList: true, subtree: true });
     setTimeout(() => observer.disconnect(), 30000);
   },
 
-  observeRows() {
-    if (this.rowsObserver || typeof ResizeObserver === "undefined") return;
+  observeRows(rows, page) {
+    if (!rows || rows === this.observedRows) return;
+    if (typeof ResizeObserver === "undefined") return;
 
-    const rows = document.querySelector(".homeSectionsContainer");
-    if (!rows) return;
-
-    this.rowsObserver = new ResizeObserver(() => this.update());
+    this.rowsObserver ||= new ResizeObserver(() => this.update());
+    this.rowsObserver.disconnect();
+    this.observedRows = rows;
     this.rowsObserver.observe(rows);
-
-    const page = document.querySelector(".page");
     if (page) this.rowsObserver.observe(page);
   },
 };
@@ -4508,7 +4533,8 @@ const initPageVisibilityHandler = () => {
 };
 
 window.slideshowPure = {
-  CONFIG,
+
+  CONFIG: CONFIG_HANDLE,
   STATE,
   SlideUtils,
   ApiUtils,

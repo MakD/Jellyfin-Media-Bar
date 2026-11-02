@@ -346,6 +346,16 @@ const setConfig = (patch) => {
     STATE.slideshow.slideInterval.interval = CONFIG.shuffleInterval;
   }
 
+  if (changed.includes("syncPageBackdrop")) {
+    if (CONFIG.syncPageBackdrop && VisibilityObserver.wasVisible) {
+      PageBackdrop.update(
+        STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex],
+      );
+    } else {
+      PageBackdrop.clear();
+    }
+  }
+
   if (changed.some((key) => STRUCTURAL_CONFIG_KEYS.has(key))) {
     resetSlideshowState();
     bootstrap();
@@ -2127,7 +2137,10 @@ const PageBackdrop = {
   },
 
   update(itemId) {
-    if (!CONFIG.syncPageBackdrop) return;
+    if (!CONFIG.syncPageBackdrop) {
+      if (this.currentItemId || this.surface || this.observer) this.clear();
+      return;
+    }
 
     const item = STATE.slideshow.loadedItems[itemId];
 
@@ -3267,8 +3280,8 @@ const SlideshowManager = {
     fallbackToTimer();
 
     function fallbackToTimer() {
-      if (!STATE.slideshow.isPaused && STATE.slideshow.slideInterval) {
-        STATE.slideshow.slideInterval.start();
+      if (!STATE.slideshow.isPaused) {
+        SlideshowManager.ensureSlideTimer()?.start();
       }
     }
 
@@ -3757,7 +3770,7 @@ const SlideshowManager = {
       return;
     }
 
-    const timer = STATE.slideshow.slideInterval;
+    const timer = this.ensureSlideTimer();
     if (!timer || timer.timerId || timer.resumeId) return;
 
     timer.start();
@@ -3854,15 +3867,7 @@ const SlideshowManager = {
 
       this.createPaginationDots();
 
-      STATE.slideshow.slideInterval = new SlideTimer(() => {
-        if (
-          !STATE.slideshow.isPaused &&
-          !STATE.slideshow.isVideoPlaying &&
-          VisibilityObserver.wasVisible
-        ) {
-          this.nextSlide();
-        }
-      }, CONFIG.shuffleInterval);
+      STATE.slideshow.slideInterval = this.createSlideTimer();
       STATE.slideshow.slideInterval.stop();
 
       await this.updateCurrentSlide(STATE.slideshow.resumeIndex || 0);
@@ -3871,6 +3876,48 @@ const SlideshowManager = {
     } finally {
       STATE.slideshow.isLoading = false;
     }
+  },
+
+  normalizeSlideInterval() {
+    const interval =
+      validateConfigValue("shuffleInterval", CONFIG.shuffleInterval) ??
+      CONFIG_SERVER_DEFAULTS.shuffleInterval;
+    if (interval !== CONFIG.shuffleInterval) {
+      console.warn(
+        "[slideshow] shuffleInterval",
+        CONFIG.shuffleInterval,
+        "is out of range; using",
+        interval,
+      );
+      CONFIG.shuffleInterval = interval;
+    }
+    return interval;
+  },
+
+  createSlideTimer() {
+    return new SlideTimer(() => {
+      if (
+        !STATE.slideshow.isPaused &&
+        !STATE.slideshow.isVideoPlaying &&
+        VisibilityObserver.wasVisible
+      ) {
+        this.nextSlide();
+      }
+    }, this.normalizeSlideInterval());
+  },
+
+  ensureSlideTimer() {
+    if (!STATE.slideshow.totalItems) return null;
+
+    const interval = this.normalizeSlideInterval();
+    let timer = STATE.slideshow.slideInterval;
+    if (!timer) {
+      timer = STATE.slideshow.slideInterval = this.createSlideTimer();
+      timer.stop();
+    } else if (!timer.timerId && !timer.resumeId) {
+      timer.interval = interval;
+    }
+    return timer;
   },
 };
 

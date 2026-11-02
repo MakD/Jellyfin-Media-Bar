@@ -1,7 +1,11 @@
 # Jellyfin-Media-Bar - Now with Play Now Function
 
-![jsDelivr hits (GitHub)](https://img.shields.io/jsdelivr/gh/hm/makd/Jellyfin-Media-Bar?style=for-the-badge&logo=javascript&logoColor=white&labelColor=F0DB4F&color=323330&cacheSeconds=3600)
+<div align="center">
 
+![jsDelivr hits (GitHub)](https://img.shields.io/jsdelivr/gh/hm/makd/Jellyfin-Media-Bar?style=for-the-badge&logo=javascript&logoColor=white&labelColor=F0DB4F&color=323330&cacheSeconds=3600)
+![jsDelivr hits (Plugin)](https://img.shields.io/jsdelivr/gh/hm/IAmParadox27/jellyfin-plugin-media-bar?style=for-the-badge&logo=javascript&logoColor=white&labelColor=F0DB4F&color=435274&cacheSeconds=3600)
+
+</div>
 
 
 **IMP UPDATE — We have dropped support for the normal CSS version (for now). _(It still works, but there will be no further updates till the fullscreen mode is stabilized)_** 

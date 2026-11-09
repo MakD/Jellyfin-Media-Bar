@@ -1,5 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v6.1.4
+ * Jellyfin Slideshow by M0RPH3US v6.1.5
  *
  * The Archivo Narrow webfont is linked from index.html, not @import-ed here:
  * an @import cannot start downloading until this stylesheet has itself been
@@ -8,7 +8,6 @@
  */
 
 :root {
-
   --slideshow-height: 100vh;
 
   --slideshow-content-top: 65vh;
@@ -162,8 +161,8 @@
 
   mask-image: var(--slideshow-video-side-fade), var(--slideshow-bottom-fade);
 
-  -webkit-mask-image: var(--slideshow-video-side-fade),
-    var(--slideshow-bottom-fade);
+  -webkit-mask-image:
+    var(--slideshow-video-side-fade), var(--slideshow-bottom-fade);
 
   mask-composite: intersect;
   -webkit-mask-composite: source-in;
@@ -432,10 +431,12 @@
 
 .backdrop.with-video {
   width: 40%;
-  mask-image: var(--slideshow-bottom-fade),
+  mask-image:
+    var(--slideshow-bottom-fade),
     linear-gradient(to right, black 30%, transparent 85%);
 
-  -webkit-mask-image: var(--slideshow-bottom-fade),
+  -webkit-mask-image:
+    var(--slideshow-bottom-fade),
     linear-gradient(to right, black 30%, transparent 85%);
 
   mask-composite: intersect;
@@ -836,9 +837,7 @@
     left: 50%;
     right: auto;
     transform: translateX(-50%);
-    bottom: calc(
-      var(--slideshow-height) - var(--slideshow-content-top) + 7vh
-    );
+    bottom: calc(var(--slideshow-height) - var(--slideshow-content-top) + 7vh);
     width: 92%;
     align-items: center;
     text-align: center;
@@ -883,7 +882,6 @@
 
 @media only screen and (max-width: 1024px) and (max-height: 767px) and (orientation: landscape) {
   :root {
-
     --slideshow-content-top: 68vh;
     --slideshow-gutter: 5vw;
   }
@@ -1182,7 +1180,6 @@
 }
 
 #slides-container.layout-plate .slide-content {
-
   top: auto;
   bottom: calc(
     var(--slideshow-height) - var(--slideshow-content-top) +
@@ -1233,7 +1230,8 @@
   gap: 1rem;
   padding-bottom: clamp(0.3rem, 0.7vh, 0.55rem);
   margin-bottom: clamp(0.3rem, 0.7vh, 0.55rem);
-  border-bottom: 1px solid color-mix(in srgb, var(--plate-accent) 30%, transparent);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--plate-accent) 30%, transparent);
 }
 
 #slides-container.layout-plate .spec-row.is-last {
@@ -1745,7 +1743,6 @@
 }
 
 @media (max-width: 767px) and (orientation: portrait) {
-
   #slides-container.layout-marquee .spec-line {
     flex-wrap: nowrap;
     overflow: hidden;
@@ -1789,10 +1786,8 @@
 }
 
 @media (max-width: 767px) and (orientation: portrait) {
-
   :root.sspure-marquee,
   :root.sspure-plate {
-
     --slideshow-height: 66vh;
     --slideshow-content-top: 54vh;
   }

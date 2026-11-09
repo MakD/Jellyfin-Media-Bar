@@ -1,5 +1,5 @@
 /*
- * Jellyfin Slideshow by M0RPH3US v6.1.4
+ * Jellyfin Slideshow by M0RPH3US v6.1.5
  */
 
 const CONFIG = {
@@ -250,13 +250,19 @@ const applyConfig = (source, options = {}) => {
   for (const [rawKey, value] of Object.entries(source)) {
     if (rawKey === "lock" || rawKey === "__v") continue;
 
-    if (rawKey === "IMAGE_SVG" || rawKey === "ImageSvgs" || rawKey === "imageSvgs") {
+    if (
+      rawKey === "IMAGE_SVG" ||
+      rawKey === "ImageSvgs" ||
+      rawKey === "imageSvgs"
+    ) {
       if (trusted && applyImageSvgOverrides(value)) changed.push("IMAGE_SVG");
       continue;
     }
 
     const key =
-      rawKey in CONFIG ? rawKey : rawKey.charAt(0).toLowerCase() + rawKey.slice(1);
+      rawKey in CONFIG
+        ? rawKey
+        : rawKey.charAt(0).toLowerCase() + rawKey.slice(1);
 
     if (!(key in CONFIG)) continue;
     if (!trusted && lockedConfigKeys.has(key)) continue;
@@ -297,7 +303,6 @@ const readStoredConfig = () => {
     }
     return parsed;
   } catch {
-
     return null;
   }
 };
@@ -310,9 +315,7 @@ const saveStoredConfig = (patch) => {
   };
   try {
     localStorage.setItem(STORED_CONFIG_KEY, JSON.stringify(next));
-  } catch {
-
-  }
+  } catch {}
   return next;
 };
 
@@ -366,9 +369,7 @@ const setConfig = (patch) => {
 const clearStoredConfig = () => {
   try {
     localStorage.removeItem(STORED_CONFIG_KEY);
-  } catch {
-
-  }
+  } catch {}
 };
 
 applyConfig(window.MediaBarConfig, {
@@ -460,9 +461,7 @@ const hideTrailerCaptions = (player) => {
   try {
     player.unloadModule("captions");
     player.unloadModule("cc");
-  } catch (err) {
-
-  }
+  } catch (err) {}
 };
 
 const loadYouTubeAPI = () => {
@@ -519,19 +518,18 @@ const loadYouTubeAPI = () => {
 const mark = (name) => {
   try {
     performance.mark(`sspure:${name}`);
-  } catch (error) {
-
-  }
+  } catch (error) {}
 };
 
 const markJellyfinHomeRender = () => {
-
   if (!CONFIG.measureStartup) return;
   if (STATE.slideshow.homeRenderWatched) return;
   STATE.slideshow.homeRenderWatched = true;
 
   const alreadyRendered = () =>
-    document.querySelector(".homeSectionsContainer .sectionTitle, .homeSectionsContainer .card");
+    document.querySelector(
+      ".homeSectionsContainer .sectionTitle, .homeSectionsContainer .card",
+    );
 
   if (alreadyRendered()) {
     mark("jellyfin-home-rows");
@@ -553,10 +551,10 @@ const isUserLoggedIn = () => {
     const apiClient = window.ApiClient;
     return Boolean(
       apiClient &&
-        typeof apiClient.isLoggedIn === "function" &&
-        apiClient.isLoggedIn() &&
-        apiClient.accessToken() &&
-        apiClient.getCurrentUserId(),
+      typeof apiClient.isLoggedIn === "function" &&
+      apiClient.isLoggedIn() &&
+      apiClient.accessToken() &&
+      apiClient.getCurrentUserId(),
     );
   } catch (error) {
     console.error("Error checking login status:", error);
@@ -569,10 +567,10 @@ const hasUsableCredentials = () => {
     const apiClient = window.ApiClient;
     return Boolean(
       apiClient &&
-        typeof apiClient.accessToken === "function" &&
-        apiClient.accessToken() &&
-        apiClient.serverAddress() &&
-        apiClient.getCurrentUserId(),
+      typeof apiClient.accessToken === "function" &&
+      apiClient.accessToken() &&
+      apiClient.serverAddress() &&
+      apiClient.getCurrentUserId(),
     );
   } catch (error) {
     return false;
@@ -606,7 +604,6 @@ const readStoredCredentials = () => {
 
 const initJellyfinData = () => {
   try {
-
     if (hasUsableCredentials()) {
       const apiClient = window.ApiClient;
       STATE.jellyfinData = {
@@ -621,7 +618,6 @@ const initJellyfinData = () => {
       };
       STATE.slideshow.startedFromStoredCredentials = false;
     } else {
-
       const stored = readStoredCredentials();
       if (!stored) return false;
 
@@ -640,8 +636,8 @@ const initJellyfinData = () => {
 
     return Boolean(
       STATE.jellyfinData.userId &&
-        STATE.jellyfinData.accessToken &&
-        STATE.jellyfinData.serverAddress,
+      STATE.jellyfinData.accessToken &&
+      STATE.jellyfinData.serverAddress,
     );
   } catch (error) {
     console.error("Error reading Jellyfin client data:", error);
@@ -828,7 +824,6 @@ const waitForSignIn = () => {
     const started = Date.now();
 
     const tick = () => {
-
       if (isUserLoggedIn() || readStoredCredentials()) {
         mark("credentials-available");
         resolve();
@@ -918,7 +913,6 @@ const watchForSignOut = () => {
 bootstrap();
 
 const SlideUtils = {
-
   shuffleArray(array) {
     const newArray = [...array];
     for (let i = newArray.length - 1; i > 0; i--) {
@@ -983,7 +977,6 @@ const SlideUtils = {
       } else if (key.startsWith("on") && typeof value === "function") {
         element.addEventListener(key.slice(2), value);
       } else if (typeof value === "boolean") {
-
         element[key] = value;
       } else {
         element.setAttribute(key, value);
@@ -1085,7 +1078,6 @@ const createLocalPlayer = (video) => ({
   isLocal: true,
   element: video,
   playVideo() {
-
     const started = video.play();
     if (started && typeof started.catch === "function") {
       started.catch(() => {
@@ -1099,9 +1091,7 @@ const createLocalPlayer = (video) => ({
   seekTo(seconds) {
     try {
       video.currentTime = seconds || 0;
-    } catch (error) {
-
-    }
+    } catch (error) {}
   },
   mute() {
     video.muted = true;
@@ -1121,9 +1111,7 @@ const createLocalPlayer = (video) => ({
       video.removeAttribute("src");
       video.load();
       video.remove();
-    } catch (error) {
-
-    }
+    } catch (error) {}
   },
 });
 
@@ -1413,10 +1401,8 @@ const LocalizationUtils = {
 };
 
 const ApiUtils = {
-
   itemFieldsQuery() {
     return [
-
       "fields=Overview,Genres,Taglines,RemoteTrailers,ChildCount,LocalTrailerCount",
       "enableUserData=true",
       "enableImageTypes=Backdrop,Logo,Primary",
@@ -1439,7 +1425,9 @@ const ApiUtils = {
         if (response.status === 401 || response.status === 403) {
           STATE.slideshow.credentialsRejected = true;
         }
-        console.warn(`Slideshow: could not load listed items (${response.status}).`);
+        console.warn(
+          `Slideshow: could not load listed items (${response.status}).`,
+        );
         return [];
       }
 
@@ -1452,11 +1440,9 @@ const ApiUtils = {
   },
 
   async getSkipSegments(videoId) {
-
     if (!CONFIG.enableSponsorBlock) return 0;
 
     try {
-
       const categories = '["intro"]';
       const response = await fetch(
         `https://sponsor.ajay.app/api/skipSegments?videoID=${videoId}&categories=${categories}`,
@@ -1485,7 +1471,6 @@ const ApiUtils = {
       const response = await fetch(listFileName);
 
       if (!response.ok) {
-
         if (response.status !== 404) {
           console.warn(
             `Slideshow: list.txt returned ${response.status}; using library items.`,
@@ -1520,7 +1505,6 @@ const ApiUtils = {
 
         .filter((line) => line && !line.startsWith("#"))
         .forEach((line) => {
-
           if (/^[0-9a-f-]{32,36}$/i.test(line)) {
             ids.push(line);
             return;
@@ -1607,7 +1591,6 @@ const ApiUtils = {
     );
 
     if (!response.ok) {
-
       if (response.status === 401 || response.status === 403) {
         STATE.slideshow.credentialsRejected = true;
         console.warn(
@@ -1624,7 +1607,9 @@ const ApiUtils = {
 
     const { Items: items = [] } = await response.json();
 
-    const withLogos = items.filter((item) => item.ImageTags && item.ImageTags.Logo);
+    const withLogos = items.filter(
+      (item) => item.ImageTags && item.ImageTags.Logo,
+    );
 
     if (library) withLogos.forEach((item) => (item.LibraryId = library.Id));
 
@@ -1882,7 +1867,6 @@ const ApiUtils = {
 };
 
 class SlideTimer {
-
   constructor(callback, interval) {
     this.callback = callback;
     this.interval = interval;
@@ -2043,7 +2027,8 @@ const PageBackdrop = {
   getSurface() {
     const bg = document.querySelector(".backgroundContainer");
     if (!bg) return null;
-    if (document.querySelector(".backdropContainer .backdropImage")) return null;
+    if (document.querySelector(".backdropContainer .backdropImage"))
+      return null;
     return bg;
   },
 
@@ -2116,7 +2101,6 @@ const PageBackdrop = {
     if (this.observer) return;
 
     this.observer = new MutationObserver(() => {
-
       if (this.isWriting) return;
 
       this.isWriting = true;
@@ -2207,7 +2191,6 @@ const PageBackdrop = {
 };
 
 const SlideCreator = {
-
   buildImageUrl(item, imageType, index, serverAddress, quality) {
     const itemId = item.Id;
     let tag = null;
@@ -2324,7 +2307,6 @@ const SlideCreator = {
       !isDataSaverOn() &&
       trailersAllowedFor(item)
     ) {
-
       hasLocalTrailer =
         CONFIG.preferLocalTrailers && (item.LocalTrailerCount || 0) > 0;
       videoId = hasLocalTrailer
@@ -2380,7 +2362,6 @@ const SlideCreator = {
         BlurHash.forItem(item, "Backdrop", backdropTag),
       );
       if (placeholder) {
-
         backdrop.style.backgroundImage = `url("${placeholder}")`;
         backdrop.classList.add("awaiting-image");
         const reveal = () => backdrop.classList.remove("awaiting-image");
@@ -2508,7 +2489,6 @@ const SlideCreator = {
     });
 
     if (isMarqueeLayout()) {
-
       const rail = SlideUtils.createElement("div", {
         className: "spec-rail",
       });
@@ -2526,7 +2506,6 @@ const SlideCreator = {
         buttonContainer,
       );
     } else if (isPlateLayout()) {
-
       const position = STATE.slideshow.itemIds.indexOf(itemId);
       const eyebrow = SlideUtils.createElement(
         "div",
@@ -2553,7 +2532,9 @@ const SlideCreator = {
     slide.append(backdropContainer);
 
     if (isPlateLayout()) {
-      slide.appendChild(SlideUtils.createElement("div", { className: "plate" }));
+      slide.appendChild(
+        SlideUtils.createElement("div", { className: "plate" }),
+      );
     }
 
     slide.append(gradientOverlay, featuredContent, content);
@@ -2675,7 +2656,6 @@ const SlideCreator = {
       );
     }
     if (typeof item.CriticRating === "number") {
-
       const tomato =
         item.CriticRating < 60
           ? CONFIG.IMAGE_SVG.rottenTomato
@@ -2693,7 +2673,6 @@ const SlideCreator = {
             );
       push("runtime", `${item.ChildCount} ${seasonText}`);
     } else if (typeof item.RunTimeTicks === "number" && item.RunTimeTicks > 0) {
-
       const totalMinutes = Math.round(item.RunTimeTicks / 600000000);
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
@@ -2769,11 +2748,7 @@ const SlideCreator = {
       const year = new Date(premiereDate).getFullYear();
       if (!Number.isNaN(year)) {
         fields.push(
-          SlideUtils.createElement(
-            "div",
-            { className: "date" },
-            String(year),
-          ),
+          SlideUtils.createElement("div", { className: "date" }, String(year)),
         );
       }
     }
@@ -2836,7 +2811,6 @@ const SlideCreator = {
   },
 
   createPlayButton(itemId) {
-
     const button = SlideUtils.createElement("button", {
       className: "detailButton btnPlay play-button",
       tabIndex: "0",
@@ -2957,7 +2931,6 @@ const SlideCreator = {
           STATE.slideshow.players[itemId] = createLocalPlayer(video);
           STATE.slideshow.slideVideoIds[itemId] = `local:${itemId}`;
         } else {
-
           STATE.slideshow.slideVideoIds[itemId] = null;
         }
       } else if (videoId) {
@@ -2984,7 +2957,8 @@ const SlideCreator = {
               },
               events: {
                 onStateChange: (e) => {
-                  if (e.data === YT.PlayerState.PLAYING) hideTrailerCaptions(e.target);
+                  if (e.data === YT.PlayerState.PLAYING)
+                    hideTrailerCaptions(e.target);
                   SlideshowManager.onPlayerStateChange(
                     e,
                     itemId,
@@ -3013,7 +2987,6 @@ const SlideCreator = {
 };
 
 const SlideshowManager = {
-
   createPaginationDots() {
     const container = SlideUtils.getOrCreateSlidesContainer();
 
@@ -3090,7 +3063,6 @@ const SlideshowManager = {
     if (!bar) return;
 
     if (!running) {
-
       const current = getComputedStyle(bar).width;
       bar.style.transition = "none";
       bar.style.width = current;
@@ -3101,10 +3073,7 @@ const SlideshowManager = {
     if (!container) return;
     const done = bar.getBoundingClientRect().width;
     const total = container.getBoundingClientRect().width || 1;
-    const remaining = Math.max(
-      0,
-      CONFIG.shuffleInterval * (1 - done / total),
-    );
+    const remaining = Math.max(0, CONFIG.shuffleInterval * (1 - done / total));
     bar.style.transition = `width ${remaining}ms linear`;
     bar.style.width = "100%";
   },
@@ -3309,11 +3278,9 @@ const SlideshowManager = {
   },
 
   startTrailer(index, itemId, resumeTimer) {
-
     if (STATE.slideshow.currentSlideIndex !== index) return;
 
     if (STATE.slideshow.isPaused || !VisibilityObserver.wasVisible) {
-
       return;
     }
 
@@ -3381,9 +3348,7 @@ const SlideshowManager = {
           player.pauseVideo();
           if (typeof player.seekTo === "function") player.seekTo(0);
         }
-      } catch (error) {
-
-      }
+      } catch (error) {}
     });
 
     document.querySelectorAll("#slides-container .slide").forEach((slide) => {
@@ -3512,7 +3477,6 @@ const SlideshowManager = {
   SESSION_ORDER_KEY: "slideshowpure_order",
 
   applySessionOrder(items) {
-
     if (!CONFIG.rememberOrderForSession) {
       return SlideUtils.mixTypesInHead(
         SlideUtils.shuffleArray(items),
@@ -3527,9 +3491,7 @@ const SlideshowManager = {
 
       if (Array.isArray(stored?.ids) && stored.ids.length) {
         const byId = new Map(items.map((item) => [item.Id, item]));
-        const ordered = stored.ids
-          .map((id) => byId.get(id))
-          .filter(Boolean);
+        const ordered = stored.ids.map((id) => byId.get(id)).filter(Boolean);
 
         const known = new Set(ordered.map((item) => item.Id));
         const added = items.filter((item) => !known.has(item.Id));
@@ -3544,9 +3506,7 @@ const SlideshowManager = {
           return result;
         }
       }
-    } catch (error) {
-
-    }
+    } catch (error) {}
 
     const shuffled = SlideUtils.mixTypesInHead(
       SlideUtils.shuffleArray(items),
@@ -3563,9 +3523,7 @@ const SlideshowManager = {
         this.SESSION_ORDER_KEY,
         JSON.stringify({ ids: items.map((item) => item.Id), index }),
       );
-    } catch (error) {
-
-    }
+    } catch (error) {}
   },
 
   persistSessionIndex(index) {
@@ -3577,9 +3535,7 @@ const SlideshowManager = {
       if (!stored?.ids) return;
       stored.index = index;
       sessionStorage.setItem(this.SESSION_ORDER_KEY, JSON.stringify(stored));
-    } catch (error) {
-
-    }
+    } catch (error) {}
   },
 
   initHoverPause() {
@@ -3681,7 +3637,9 @@ const SlideshowManager = {
         return;
       }
 
-      const buttonRow = container.querySelector(".slide.active .button-container");
+      const buttonRow = container.querySelector(
+        ".slide.active .button-container",
+      );
       const focusedButton =
         buttonRow && buttonRow.contains(active) ? active : null;
 
@@ -3708,7 +3666,6 @@ const SlideshowManager = {
           break;
 
         case "Enter":
-
           if (!focusedButton && active === container) {
             container.querySelector(".slide.active .play-button")?.click();
             event.preventDefault();
@@ -3731,15 +3688,12 @@ const SlideshowManager = {
   },
 
   onTrailerPlaying(itemId, trailerContainer) {
-
     const currentItemId =
       STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
     if (itemId !== currentItemId) {
       try {
         STATE.slideshow.players[itemId]?.pauseVideo();
-      } catch (error) {
-
-      }
+      } catch (error) {}
       this.setTrailerVisible(itemId, trailerContainer, false);
       return;
     }
@@ -3796,7 +3750,6 @@ const SlideshowManager = {
       event.data === YTRef.PlayerState.PAUSED ||
       event.data === YTRef.PlayerState.CUED
     ) {
-
       const currentItemId =
         STATE.slideshow.itemIds[STATE.slideshow.currentSlideIndex];
       if (itemId !== currentItemId) return;
@@ -3943,9 +3896,8 @@ const LayoutSync = {
   },
 
   update() {
-
     const rows = this.visible(".homeSectionsContainer");
-    const page = rows?.closest(".page") || this.visible(".page");
+    const page = rows?.closest(".page");
     if (!page) return;
 
     this.observeRows(rows, page);
@@ -3979,6 +3931,7 @@ const LayoutSync = {
 
     window.addEventListener("resize", () => this.update(), { passive: true });
     window.addEventListener("hashchange", () => this.update());
+    document.addEventListener("viewshow", () => this.update());
 
     document.fonts?.ready?.then(() => this.update()).catch(() => {});
 
@@ -4002,6 +3955,8 @@ const LayoutSync = {
     this.observedRows = rows;
     this.rowsObserver.observe(rows);
     if (page) this.rowsObserver.observe(page);
+    const spacer = page?.closest("main")?.previousElementSibling;
+    if (spacer) this.rowsObserver.observe(spacer);
   },
 };
 
@@ -4023,7 +3978,6 @@ const SettingsPanel = {
       ],
     },
     {
-
       key: "contentMode",
       label: "Display",
       type: "choice",
@@ -4053,7 +4007,6 @@ const SettingsPanel = {
       },
     },
     {
-
       key: "libraries",
       label: "Libraries",
       type: "multichoice",
@@ -4126,11 +4079,15 @@ const SettingsPanel = {
     );
     panel.append(header);
 
-    const body = SlideUtils.createElement("div", { className: "ss-settings-body" });
+    const body = SlideUtils.createElement("div", {
+      className: "ss-settings-body",
+    });
     this.FIELDS.forEach((field) => body.append(this.buildRow(field)));
     panel.append(body);
 
-    const footer = SlideUtils.createElement("div", { className: "ss-settings-foot" });
+    const footer = SlideUtils.createElement("div", {
+      className: "ss-settings-foot",
+    });
     footer.append(
       SlideUtils.createElement("button", {
         className: "ss-settings-reset",
@@ -4362,9 +4319,7 @@ const SettingsPanel = {
     this.isOpen = true;
     this.element.classList.add("is-open");
 
-    document
-      .getElementById("slides-container")
-      ?.classList.add("settings-open");
+    document.getElementById("slides-container")?.classList.add("settings-open");
     this.element.setAttribute("aria-hidden", "false");
 
     if (!STATE.slideshow.isPaused) {
@@ -4583,7 +4538,6 @@ const initPageVisibilityHandler = () => {
 };
 
 window.slideshowPure = {
-
   CONFIG: CONFIG_HANDLE,
   STATE,
   SlideUtils,

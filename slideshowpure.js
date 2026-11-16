@@ -3590,6 +3590,40 @@ const SlideshowManager = {
       },
       { passive: true },
     );
+
+    // Two-finger trackpad swipes arrive as a burst of horizontal wheel events,
+    // including momentum after the fingers lift. Treat one burst as one swipe.
+    let wheelTravel = 0;
+    let wheelHandled = false;
+    let wheelIdleTimer = null;
+
+    container.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.ctrlKey || Math.abs(e.deltaX) <= Math.abs(e.deltaY)) return;
+
+        // Stops the browser treating the swipe as back/forward navigation.
+        e.preventDefault();
+
+        clearTimeout(wheelIdleTimer);
+        wheelIdleTimer = setTimeout(() => {
+          wheelTravel = 0;
+          wheelHandled = false;
+        }, 200);
+
+        if (wheelHandled) return;
+
+        const lineHeight = 16;
+        wheelTravel += e.deltaMode === 1 ? e.deltaX * lineHeight : e.deltaX;
+
+        if (Math.abs(wheelTravel) >= CONFIG.minSwipeDistance) {
+          wheelHandled = true;
+          // Scrolling right is the same as swiping left: next slide.
+          this.handleSwipe(wheelTravel, 0);
+        }
+      },
+      { passive: false },
+    );
   },
 
   handleSwipe(startX, endX) {
@@ -3624,10 +3658,28 @@ const SlideshowManager = {
     });
 
     document.addEventListener("keydown", (event) => {
-      if (!STATE.slideshow.containerFocused) return;
       if (!VisibilityObserver.wasVisible) return;
 
       const active = document.activeElement;
+      const modified =
+        event.ctrlKey || event.altKey || event.metaKey || event.shiftKey;
+      const direction = modified ? 0 : getSlideDirection(event);
+
+      if (!STATE.slideshow.containerFocused) {
+        // With nothing focused, left and right still move slides while the bar is on screen.
+        // TV layouts normally have something focused, so Jellyfin keeps its own navigation there.
+        if (!direction || (active && active !== document.body)) return;
+        // A reset replaces the container, so look up the current one.
+        const bar = document.getElementById("slides-container");
+        if (!bar) return;
+        const rect = bar.getBoundingClientRect();
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight) return;
+        if (direction > 0) this.nextSlide();
+        else this.prevSlide();
+        event.preventDefault();
+        return;
+      }
+
       if (
         active &&
         (active.tagName === "INPUT" ||
@@ -3643,23 +3695,20 @@ const SlideshowManager = {
       const focusedButton =
         buttonRow && buttonRow.contains(active) ? active : null;
 
+      if (direction) {
+        const sibling =
+          direction > 0
+            ? focusedButton?.nextElementSibling
+            : focusedButton?.previousElementSibling;
+        if (sibling) sibling.focus();
+        else if (direction > 0) this.nextSlide();
+        else this.prevSlide();
+        // Also stops Jellyfin's spatial navigation, which skips prevented events.
+        event.preventDefault();
+        return;
+      }
+
       switch (event.key) {
-        case "ArrowRight": {
-          const next = focusedButton?.nextElementSibling;
-          if (next) next.focus();
-          else this.nextSlide();
-          event.preventDefault();
-          break;
-        }
-
-        case "ArrowLeft": {
-          const previous = focusedButton?.previousElementSibling;
-          if (previous) previous.focus();
-          else this.prevSlide();
-          event.preventDefault();
-          break;
-        }
-
         case " ":
           this.togglePause();
           event.preventDefault();
@@ -4434,6 +4483,15 @@ const initArrowNavigation = () => {
   });
 
   container.append(leftArrow, rightArrow, volumeBtn, pauseButton, settingsBtn);
+};
+
+// -1 is previous, 1 is next, 0 is neither. keyCode also catches gamepads, which
+// Jellyfin forwards as key "GamepadDPadLeft" with keyCode 37, and older TV
+// remotes that report key "Left".
+const getSlideDirection = (event) => {
+  if (event.key === "ArrowLeft" || event.keyCode === 37) return -1;
+  if (event.key === "ArrowRight" || event.keyCode === 39) return 1;
+  return 0;
 };
 
 const isTouchLayout = () =>

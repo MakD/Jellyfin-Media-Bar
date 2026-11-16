@@ -2222,12 +2222,23 @@ const SlideCreator = {
       baseUrl = `${serverAddress}/Items/${itemId}/Images/${imageType}`;
     }
 
+    // Backdrops cover the screen, so ask for just enough pixels to cover it.
+    // fillWidth/fillHeight keep the aspect ratio and never upscale, so a
+    // portrait phone or a small original still gets the full image.
+    let sizeParam = "";
+    if (imageType === "Backdrop") {
+      const dpr = window.devicePixelRatio || 1;
+      const fillWidth = Math.ceil(window.screen.width * dpr);
+      const fillHeight = Math.ceil(window.screen.height * dpr);
+      sizeParam = `&fillWidth=${fillWidth}&fillHeight=${fillHeight}`;
+    }
+
     if (tag) {
       const qualityParam = quality !== undefined ? `&quality=${quality}` : "";
-      return `${baseUrl}?tag=${tag}${qualityParam}`;
+      return `${baseUrl}?tag=${tag}${qualityParam}${sizeParam}`;
     } else {
       const qualityParam = quality !== undefined ? quality : 90;
-      return `${baseUrl}?quality=${qualityParam}`;
+      return `${baseUrl}?quality=${qualityParam}${sizeParam}`;
     }
   },
 

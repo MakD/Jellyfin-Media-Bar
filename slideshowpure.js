@@ -62,7 +62,7 @@ const CONFIG = {
 
   // true|false. Mirror the slide onto Jellyfin's page backdrop. Intrusive: it deletes Jellyfin's own backdrop layers while active.
   syncPageBackdrop: false,
-  // ms to wait for the YouTube iframe API before giving up and carrying on.
+  // ms to wait for YouTube API, iframe and player initialization before carrying on.
   youtubeApiLoadTimeoutMs: 8000,
 
   // ms the backdrop is shown before the trailer starts. 0 = immediately.
@@ -450,6 +450,8 @@ const STATE = {
     totalItems: 0,
     isLoading: false,
     players: {},
+    playerReady: {},
+    trailerGeneration: 0,
     ytPromise: null,
     isMuted: true,
     isVideoPlaying: false,
@@ -513,6 +515,139 @@ const loadYouTubeAPI = () => {
     }, CONFIG.youtubeApiLoadTimeoutMs);
   });
   return STATE.slideshow.ytPromise;
+};
+
+const createYouTubeTrailer = (itemId, videoId, slide, trailerContainer) => {
+  return new Promise((resolve) => {
+    let settled = false;
+    let disposed = false;
+    let player = null;
+    let frame = null;
+    const isCurrent = () =>
+      !disposed &&
+      slide.isConnected &&
+      document.querySelector(`.slide[data-item-id="${itemId}"]`) === slide;
+    const observer = new MutationObserver(() => {
+      if (!isCurrent()) finish(null);
+    });
+    // Initialization has its own budget; the playback watchdog starts onReady.
+    const deadline = setTimeout(() => {
+      fail("initialization-timeout");
+    }, CONFIG.youtubeApiLoadTimeoutMs);
+
+    function finish(ready) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      observer.disconnect();
+      if (!ready) {
+        disposed = true;
+        player?.destroy();
+        frame?.remove();
+        if (STATE.slideshow.players[itemId] === player) {
+          delete STATE.slideshow.players[itemId];
+        }
+      }
+      resolve(ready);
+    }
+
+    function fail(error) {
+      if (isCurrent()) {
+        SlideshowManager.onPlayerError(
+          { data: String(error) },
+          itemId,
+          trailerContainer,
+        );
+      }
+      finish(null);
+    }
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+    Promise.all([loadYouTubeAPI(), ApiUtils.getSkipSegments(videoId)])
+      .then(([YT, start]) => {
+        if (settled) return;
+        const host = document.getElementById(`yt-player-${itemId}`);
+        if (!YT || !host || !isCurrent()) {
+          finish(null);
+          return;
+        }
+        frame = document.createElement("iframe");
+        frame.id = host.id;
+        frame.className = host.className;
+        frame.title = "YouTube trailer";
+        frame.allow = "autoplay; encrypted-media; fullscreen";
+        frame.referrerPolicy = "strict-origin-when-cross-origin";
+        frame.tabIndex = -1;
+        const query = new URLSearchParams({
+          enablejsapi: "1",
+          origin: window.location.origin,
+          autoplay: "0",
+          mute: "1",
+          controls: "0",
+          disablekb: "1",
+          fs: "0",
+          iv_load_policy: "3",
+          rel: "0",
+          start: String(start),
+        });
+        frame.src = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${query}`;
+        // A new iframe initially inherits the parent's origin. Wait for navigation
+        // before allowing YouTube's widget API to send it initialization messages.
+        frame.addEventListener(
+          "load",
+          () => {
+            if (settled || !isCurrent()) {
+              finish(null);
+              return;
+            }
+            try {
+              player = new YT.Player(frame, {
+                events: {
+                  onReady(event) {
+                    if (settled || !isCurrent()) {
+                      event.target.destroy();
+                      finish(null);
+                      return;
+                    }
+                    event.target.mute();
+                    hideTrailerCaptions(event.target);
+                    finish(event.target);
+                  },
+                  onStateChange(event) {
+                    if (!isCurrent()) return;
+                    if (event.data === YT.PlayerState.PLAYING)
+                      hideTrailerCaptions(event.target);
+                    SlideshowManager.onPlayerStateChange(
+                      event,
+                      itemId,
+                      trailerContainer,
+                    );
+                  },
+                  onError(event) {
+                    if (isCurrent())
+                      SlideshowManager.onPlayerError(
+                        event,
+                        itemId,
+                        trailerContainer,
+                      );
+                    finish(null);
+                  },
+                },
+              });
+              STATE.slideshow.players[itemId] = player;
+            } catch (error) {
+              fail(error);
+            }
+          },
+          { once: true },
+        );
+        host.replaceWith(frame);
+      })
+      .catch(fail);
+  });
 };
 
 const mark = (name) => {
@@ -813,6 +948,8 @@ const destroyAllPlayers = () => {
     }
   });
   STATE.slideshow.players = {};
+  STATE.slideshow.playerReady = {};
+  STATE.slideshow.trailerGeneration += 1;
   STATE.slideshow.isVideoPlaying = false;
 };
 
@@ -2934,48 +3071,12 @@ const SlideCreator = {
           STATE.slideshow.slideVideoIds[itemId] = null;
         }
       } else if (videoId) {
-        const startTime = await ApiUtils.getSkipSegments(videoId);
-
-        loadYouTubeAPI().then((YT) => {
-          if (!YT) return;
-          if (!document.getElementById(`trailer-${itemId}`)) return;
-
-          STATE.slideshow.players[itemId] = new YT.Player(
-            `yt-player-${itemId}`,
-            {
-              videoId: videoId,
-              playerVars: {
-                autoplay: 0,
-                controls: 0,
-                disablekb: 1,
-                fs: 0,
-                iv_load_policy: 3,
-                modestbranding: 1,
-                rel: 0,
-                showinfo: 0,
-                start: startTime,
-              },
-              events: {
-                onStateChange: (e) => {
-                  if (e.data === YT.PlayerState.PLAYING)
-                    hideTrailerCaptions(e.target);
-                  SlideshowManager.onPlayerStateChange(
-                    e,
-                    itemId,
-                    trailerContainer,
-                  );
-                },
-                onReady: (e) => {
-                  e.target.mute();
-                  hideTrailerCaptions(e.target);
-                },
-
-                onError: (e) =>
-                  SlideshowManager.onPlayerError(e, itemId, trailerContainer),
-              },
-            },
-          );
-        });
+        STATE.slideshow.playerReady[itemId] = createYouTubeTrailer(
+          itemId,
+          videoId,
+          slide,
+          trailerContainer,
+        );
       }
 
       return slide;
@@ -3277,14 +3378,27 @@ const SlideshowManager = {
     }, CONFIG.fadeTransitionDuration);
   },
 
-  startTrailer(index, itemId, resumeTimer) {
+  async startTrailer(index, itemId, resumeTimer) {
     if (STATE.slideshow.currentSlideIndex !== index) return;
 
     if (STATE.slideshow.isPaused || !VisibilityObserver.wasVisible) {
       return;
     }
 
-    const player = STATE.slideshow.players[itemId];
+    const generation = STATE.slideshow.trailerGeneration;
+    const player = STATE.slideshow.playerReady[itemId]
+      ? await STATE.slideshow.playerReady[itemId]
+      : STATE.slideshow.players[itemId];
+    if (
+      generation !== STATE.slideshow.trailerGeneration ||
+      STATE.slideshow.currentSlideIndex !== index ||
+      STATE.slideshow.itemIds[index] !== itemId ||
+      STATE.slideshow.isPaused ||
+      !VisibilityObserver.wasVisible ||
+      document.hidden
+    ) {
+      return;
+    }
     if (!player || typeof player.playVideo !== "function") {
       resumeTimer();
       return;
@@ -3320,6 +3434,7 @@ const SlideshowManager = {
   },
 
   clearSlideTimers() {
+    STATE.slideshow.trailerGeneration += 1;
     clearTimeout(STATE.slideshow.trailerStartTimer);
     clearTimeout(STATE.slideshow.trailerWatchdog);
     STATE.slideshow.trailerStartTimer = null;
@@ -3427,6 +3542,7 @@ const SlideshowManager = {
 
         delete STATE.slideshow.createdSlides[itemId];
         delete STATE.slideshow.slideVideoIds[itemId];
+        delete STATE.slideshow.playerReady[itemId];
       }
     });
   },

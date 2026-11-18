@@ -165,6 +165,19 @@ Restore the `index.html` file / remove the lines added and you are good to go!!!
 </details>
 
 
+## Tests
+
+With Node.js 22.18 or newer (native TypeScript support), run:
+
+```sh
+node --check slideshowpure.js
+node --test tests/trailer-lifecycle.test.mts
+```
+
+The tests exercise the actual slide creation and playback methods with simulated
+iframe/player events and timers. No Jellyfin server, credentials or network
+requests are needed.
+
 ## License
 
 [![Custom: DBAD License](https://img.shields.io/badge/License-Don't_Be_A_Dick-red)](LICENSE)
